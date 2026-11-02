@@ -11,7 +11,8 @@
 
   const PAGE = 20;
   const $ = (id) => document.getElementById(id);
-  const state = { q: "", kind: "", body: "", sponsor: "", dept: "", outcome: "", date: "", sort: "newest", offset: 0, period: "year" };
+  const state = { q: "", kind: "", body: "", sponsor: "", dept: "", outcome: "", vote: "", date: "", sort: "newest", offset: 0, period: "year" };
+  const FILTERS = ["kind", "body", "sponsor", "dept", "outcome", "vote", "date"];
   let stats = null;
   let dbPromise = null;
 
@@ -24,7 +25,7 @@
   };
   const today = () => (stats && stats.today) || new Date().toISOString().slice(0, 10);
   const addDays = (iso, n) => { const d = new Date(iso + "T12:00:00"); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
-  const KIND_LABEL = { ordinance: "Ordinance", resolution: "Resolution", motion: "Motion", communication: "Communication", appointment: "Appointment", other: "Item" };
+  const KIND_LABEL = { ordinance: "Ordinance", resolution: "Resolution", motion: "Motion", communication: "Communication", appointment: "Appointment", presentation: "Presentation", statement: "Statement", other: "Minutes note" };
 
   // Turn what someone typed into a safe SQLite full-text query.
   // "exact phrase" stays a phrase, word* matches endings, everything else is ANDed.
@@ -68,9 +69,14 @@
     if (state.sponsor) { where.push("(f.sponsors LIKE ? OR f.mover = ?)"); args.push("%" + state.sponsor + "%", state.sponsor); }
     if (state.dept) { where.push("f.departments LIKE ?"); args.push("%" + state.dept + "%"); }
     if (state.outcome) { where.push("f.outcome_cat = ?"); args.push(state.outcome); }
+    if (state.vote === "@split") where.push("f.dissent <> ''");
+    else if (state.vote) { where.push("f.dissent LIKE ?"); args.push("%" + state.vote + "|%"); }
     const t = today();
     const year = Number(t.slice(0, 4));
+    const month = Number(t.slice(5, 7));
+    const qStart = String(3 * Math.floor((month - 1) / 3) + 1).padStart(2, "0");
     const ranges = {
+      mtd: [t.slice(0, 8) + "01", t], qtd: [year + "-" + qStart + "-01", t],
       upcoming: [t, null], "90d": [addDays(t, -90), t], "12m": [addDays(t, -365), t],
       ytd: [year + "-01-01", t], lastyear: [(year - 1) + "-01-01", (year - 1) + "-12-31"],
     };
@@ -82,7 +88,8 @@
     return { where, args };
   }
 
-  const COLS = `i.item_id, i.date, i.body, i.kind, i.matter_file, i.title, i.outcome, i.outcome_cat, i.yes_count,
+  const COLS = `i.item_id, i.date, i.body, i.kind, i.matter_file, i.title, i.outcome, i.outcome_cat, i.yes_count, i.action,
+    (SELECT dissent FROM facets WHERE facets.item_id = i.item_id) AS dissent,
     i.sponsors, i.departments, i.matter_url, m.minutes_url, m.agenda_url, m.video_url, m.page_url`;
 
   async function runSearch(append) {
@@ -145,13 +152,17 @@
 
   // ------------------------------------------------------------- rendering: search
   function renderHead(n, meetings, isSearch) {
-    const h = isSearch ? `${n.toLocaleString()} result${n === 1 ? "" : "s"} for “${esc(state.q.trim())}”`
-                       : (anyFilter() ? `${n.toLocaleString()} matching items` : "Latest agenda and minutes items");
+    let h;
+    if (isSearch) h = `${n.toLocaleString()} result${n === 1 ? "" : "s"} for “${esc(state.q.trim())}”`;
+    else if (state.vote === "@split") h = `${n.toLocaleString()} split vote${n === 1 ? "" : "s"}`;
+    else if (state.vote) h = `${n.toLocaleString()} vote${n === 1 ? "" : "s"} where ${esc(state.vote)} voted no or abstained`;
+    else h = anyFilter() ? `${n.toLocaleString()} matching items` : "Latest agenda and minutes items";
     $("res-h").innerHTML = h;
     $("res-sub").textContent = `in ${meetings.toLocaleString()} meeting${meetings === 1 ? "" : "s"}`;
     $("sorter").hidden = !isSearch && !n;
     document.querySelectorAll("#sorter button").forEach((b) => { b.hidden = !isSearch; b.setAttribute("aria-pressed", String(b.dataset.sort === state.sort)); });
-    document.querySelector("#sorter span:nth-of-type(2)").hidden = !isSearch;
+    document.querySelector("#sorter .sortlabel").hidden = !isSearch;
+    document.querySelector('#sorter [data-tip="relevance"]').hidden = !isSearch;
   }
 
   function renderNothing(msg) {
@@ -172,6 +183,17 @@
 
   function renderResult(r) {
     const icon = { passed: ICON_CHECK, failed: ICON_X, referred: ICON_ARROW, scheduled: ICON_CAL }[r.outcome_cat] || "";
+    const emergency = r.outcome_cat === "passed" && /emergency/i.test(r.action || "");
+    const outcomeLabel = emergency ? String(r.outcome).replace(/^Passed/, "Passed as emergency") : r.outcome;
+    const outcomeTip = emergency ? "passed_emergency" : (GLOSSARY[r.outcome_cat] ? r.outcome_cat : "outcome");
+    let dissent = "";
+    if (r.dissent) {
+      const no = [], ab = [];
+      r.dissent.split("; ").forEach((x) => { const [who, v] = x.split("|"); (v === "no" ? no : ab).push(who); });
+      dissent = `<div class="dissent"><span class="lab"><b>Split vote</b><button type="button" class="tip" data-tip="dissent" aria-label="About split votes">i</button></span>`
+        + (no.length ? `<span class="who"><b>Voted no:</b> ${esc(no.join(", "))}</span>` : "")
+        + (ab.length ? `<span class="who"><b>Abstained:</b> ${esc(ab.join(", "))}</span>` : "") + `</div>`;
+    }
     const links = [];
     if (r.minutes_url) links.push(`<a href="${esc(r.minutes_url)}" target="_blank" rel="noopener">Minutes PDF</a>`);
     else if (r.agenda_url) links.push(`<a href="${esc(r.agenda_url)}" target="_blank" rel="noopener">Agenda PDF</a>`);
@@ -184,11 +206,12 @@
     if (r.departments) meta.push(`<span>${esc(r.departments.replace(/; /g, ", "))}</span>`);
     return `<article class="card result">
       <div class="tags">
-        <span class="kind">${esc(KIND_LABEL[r.kind] || "Item")}</span>
-        ${r.matter_file ? `<span class="file mono">${esc(r.matter_file)}</span>` : ""}
-        ${r.outcome ? `<span class="outcome">${icon}${esc(r.outcome)}</span>` : ""}
+        <span class="kind" tabindex="0" data-tip="${GLOSSARY[r.kind] ? r.kind : "other"}">${esc(KIND_LABEL[r.kind] || "Item")}</span>
+        ${r.matter_file ? `<span class="file mono" tabindex="0" data-tip="file_number" style="cursor:help">${esc(r.matter_file)}</span>` : ""}
+        ${r.outcome ? `<span class="outcome" tabindex="0" data-tip="${outcomeTip}">${icon}${esc(outcomeLabel)}</span>` : ""}
       </div>
       <p>${highlight(r.snip, r.title)}</p>
+      ${dissent}
       <div class="meta">${meta.join("")}</div>
       <div class="links">${links.join("")}</div>
       <div class="votes" id="votes-${r.item_id}" hidden></div>
@@ -234,9 +257,13 @@
   // ------------------------------------------------------------- rendering: stats
   function renderKpis() {
     $("kpi-h").textContent = `${stats.today.slice(0, 4)} so far`;
+    const TIPS = { "Ordinances passed": "kpi_ordinances", "Resolutions adopted": "kpi_resolutions", "Motions introduced": "kpi_motions",
+      "Meetings with minutes": "kpi_meetings", "Average members present": "kpi_present", "Unanimous final votes": "kpi_unanimous" };
     $("kpi-list").innerHTML = stats.kpis.map((k) => `<div class="card kpi">
-      <span class="l">${esc(k.label)}</span><span class="v">${esc(k.value)}</span>
-      <span class="d">${k.arrow ? `<span aria-hidden="true">${k.arrow}</span> ${k.arrow === "▲" ? "Up" : "Down"} ` : ""}${esc(k.delta)}</span></div>`).join("");
+      <span class="l">${esc(k.label)}${TIPS[k.label] ? `<button type="button" class="tip" data-tip="${TIPS[k.label]}" aria-label="About ${esc(k.label.toLowerCase())}">i</button>` : ""}</span>
+      <span class="v">${esc(k.value)}</span>
+      <span class="d">${k.arrow ? `<span aria-hidden="true">${k.arrow}</span> ${k.arrow === "▲" ? "Up" : "Down"} ` : ""}${esc(k.delta)}</span>
+      ${k.label === "Unanimous final votes" ? `<button type="button" class="kpi-link" data-vote="@split" data-date="ytd">See this year's split votes</button>` : ""}</div>`).join("");
   }
 
   function niceMax(v) {
@@ -287,6 +314,7 @@
     $("member-rows").innerHTML = p.members.length ? p.members.map((m) => {
       const tot = m.total || 1;
       const out = m.absent + m.abstain;
+      const dissent = m.no + m.abstain;
       return `<tr>
         <th scope="row"><button type="button" data-sponsor="${esc(m.name)}" style="font:inherit;font-weight:600;color:var(--ink);background:none;border:0;padding:0;cursor:pointer;text-align:left">${esc(m.name)}</button></th>
         <td class="num">${m.present}%</td>
@@ -294,7 +322,7 @@
           <div style="width:${(m.yes / tot) * 100}%;background:var(--series-cur)"></div>
           <div style="width:${(m.no / tot) * 100}%;background:var(--series-no)"></div>
           <div style="width:${(out / tot) * 100}%;background:var(--absent)"></div></div></td>
-        <td class="num">${m.no}</td>
+        <td class="num"><button type="button" class="count-btn" data-vote="${esc(m.name)}" data-date="${{ month: "mtd", quarter: "qtd", year: "ytd" }[state.period]}" ${dissent ? "" : "disabled"} aria-label="${dissent} no or abstain votes by ${esc(m.name)}: show them">${dissent}</button></td>
         <td class="num">${m.against}</td></tr>`;
     }).join("") : `<tr><td colspan="5" class="empty">No final votes recorded in this period yet.</td></tr>`;
   }
@@ -307,24 +335,85 @@
     add("f-body", stats.lists.bodies);
     add("f-sponsor", stats.lists.sponsors);
     add("f-dept", stats.lists.departments);
+    add("f-vote", stats.lists.voters || [], (v) => "No or abstain: " + v);
     const when = stats.updated_at ? new Date(stats.updated_at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : "—";
     $("updated").textContent = `Last updated ${when} · ${stats.meetings_indexed.toLocaleString()} meetings and ${stats.items_indexed.toLocaleString()} items indexed.`;
   }
 
+  // ------------------------------------------------------------- explainer tooltips
+  // Any element with data-tip="key" shows GLOSSARY[key] on hover, keyboard focus, or tap.
+  function bindTooltips() {
+    const tip = $("tooltip");
+    let current = null, shownAt = 0;
+    const show = (el) => {
+      const g = GLOSSARY[el.dataset.tip];
+      if (!g) return;
+      if (current && current !== el) hide();
+      tip.innerHTML = `<b>${esc(g[0])}</b><span>${esc(g[1])}</span>`;
+      if (current !== el) shownAt = Date.now();
+      tip.hidden = false;
+      el.setAttribute("aria-describedby", "tooltip");
+      if (el.matches("button.tip")) el.setAttribute("aria-expanded", "true");
+      current = el;
+      place();
+    };
+    const place = () => {
+      if (!current) return;
+      const r = current.getBoundingClientRect();
+      if (r.bottom < 0 || r.top > window.innerHeight) { hide(); return; }
+      const w = tip.offsetWidth, h = tip.offsetHeight;
+      let left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
+      let top = r.bottom + 8;
+      if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 8);
+      tip.style.left = left + "px";
+      tip.style.top = top + "px";
+    };
+    const hide = () => {
+      if (!current) return;
+      current.removeAttribute("aria-describedby");
+      if (current.matches("button.tip")) current.setAttribute("aria-expanded", "false");
+      current = null;
+      tip.hidden = true;
+    };
+    // Phones fire fake mouse events around a tap; ignore them so a tapped tip stays open.
+    let lastTouch = 0;
+    const touchy = () => Date.now() - lastTouch < 1500 || window.matchMedia("(hover: none)").matches;
+    document.addEventListener("pointerdown", (e) => { if (e.pointerType !== "mouse") lastTouch = Date.now(); }, true);
+    document.addEventListener("mouseover", (e) => { if (touchy()) return; const el = e.target.closest("[data-tip]"); if (el) show(el); });
+    document.addEventListener("mouseout", (e) => {
+      if (touchy()) return;
+      const el = e.target.closest("[data-tip]");
+      if (el && el === current && !el.contains(e.relatedTarget)) hide();
+    });
+    document.addEventListener("focusin", (e) => { const el = e.target.closest("[data-tip]"); if (el) show(el); });
+    document.addEventListener("focusout", (e) => { if (e.target.closest("[data-tip]") === current) hide(); });
+    // Touch: tap to open, tap again (or anywhere else) to close.
+    document.addEventListener("pointerup", (e) => {
+      if (e.pointerType === "mouse") return;
+      const el = e.target.closest("[data-tip]");
+      if (el && el === current && Date.now() - shownAt > 400) hide();
+      else if (el) show(el);
+      else hide();
+    });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") hide(); });
+    window.addEventListener("scroll", place, { passive: true });
+    window.addEventListener("resize", place);
+  }
+
   // ------------------------------------------------------------- state <-> URL
-  const KEYS = ["q", "kind", "body", "sponsor", "dept", "outcome", "date", "sort"];
+  const KEYS = ["q", ...FILTERS, "sort"];
   function readUrl() {
     const p = new URLSearchParams(location.search);
     KEYS.forEach((k) => { if (p.has(k)) state[k] = p.get(k); });
     $("q").value = state.q;
-    ["kind", "body", "sponsor", "dept", "outcome", "date"].forEach((k) => { const el = $("f-" + k); if (el) el.value = state[k]; });
+    FILTERS.forEach((k) => { const el = $("f-" + k); if (el) el.value = state[k]; });
   }
   function writeUrl() {
     const p = new URLSearchParams();
     KEYS.forEach((k) => { if (state[k] && !(k === "sort" && state[k] === "newest")) p.set(k, state[k]); });
     history.replaceState(null, "", p.toString() ? "?" + p : location.pathname);
   }
-  const anyFilter = () => ["kind", "body", "sponsor", "dept", "outcome", "date"].some((k) => state[k]);
+  const anyFilter = () => FILTERS.some((k) => state[k]);
 
   function search() {
     state.q = $("q").value;
@@ -337,6 +426,7 @@
   // ------------------------------------------------------------- wire up
   function bind() {
     $("search-form").addEventListener("submit", (e) => { e.preventDefault(); state.q = $("q").value; search(); });
+    bindTooltips();
     document.querySelectorAll("[data-try]").forEach((b) => b.addEventListener("click", () => { $("q").value = b.dataset.try; state.q = b.dataset.try; search(); }));
     $("filters").addEventListener("change", (e) => {
       const k = e.target.id.replace("f-", "");
@@ -344,7 +434,7 @@
       search();
     });
     $("filters").addEventListener("reset", () => {
-      ["kind", "body", "sponsor", "dept", "outcome", "date"].forEach((k) => { state[k] = ""; });
+      FILTERS.forEach((k) => { state[k] = ""; });
       setTimeout(search, 0);
     });
     document.querySelectorAll("#sorter button").forEach((b) => b.addEventListener("click", () => { state.sort = b.dataset.sort; search(); }));
@@ -353,6 +443,19 @@
     document.addEventListener("click", (e) => {
       const v = e.target.closest("[data-votes]");
       if (v) showVotes(v.dataset.votes, v);
+      const vb = e.target.closest("[data-vote]");
+      if (vb) {
+        const sel = $("f-vote");
+        const val = vb.dataset.vote;
+        if (![...sel.options].some((o) => o.value === val)) { const o = document.createElement("option"); o.value = val; o.textContent = "No or abstain: " + val; sel.appendChild(o); }
+        FILTERS.forEach((k) => { state[k] = ""; const el = $("f-" + k); if (el) el.value = ""; });
+        state.vote = val; sel.value = val;
+        if (vb.dataset.date) { state.date = vb.dataset.date; $("f-date").value = vb.dataset.date; }
+        $("q").value = ""; state.q = "";
+        search();
+        document.getElementById("search").scrollIntoView({ behavior: "smooth" });
+        return;
+      }
       const s = e.target.closest("[data-sponsor]");
       if (s) {
         const name = s.dataset.sponsor;

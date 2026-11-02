@@ -15,7 +15,7 @@ import sys
 
 import legistar
 from common import (DEFAULT_DB, DEPT_RX, SETTINGS, TOPIC_RX, classify_kind, connect, finalize,
-                    get_meta, parse_sponsors, rebuild_search_index, rx, set_meta, tag, vote_value)
+                    get_meta, is_noise, parse_sponsors, rebuild_search_index, rx, set_meta, tag, vote_value)
 
 INCLUDE_BODIES = rx(SETTINGS["include_bodies_regex"])
 COUNCIL_BODY = rx(SETTINGS["council_body_regex"])
@@ -79,8 +79,8 @@ def save_items(con, ev, body, date, today, seen_at, stats):
     keep = []
     for it in items:
         title = clean(it.get("EventItemTitle"))
-        if not title and not it.get("EventItemMatterFile"):
-            continue  # section headers like "CONSENT ITEMS"
+        if not it.get("EventItemMatterFile") and is_noise(title, it.get("EventItemMatterId"), it.get("EventItemActionName")):
+            continue  # section headers like "ROLL CALL" and boilerplate lines
         item_id = it["EventItemId"]
         keep.append(item_id)
         action = clean(it.get("EventItemActionName"))
@@ -170,6 +170,13 @@ def is_final_vote(is_council, passed, action):
 
 def retag(con):
     """Re-apply everything that depends on config/ files, so edits take effect on old items too."""
+    noise = [r[0] for r in con.execute("SELECT item_id, title, matter_id, action, matter_file FROM items")
+             if not r[4] and is_noise(r[1], r[2], r[3])]
+    for item_id in noise:
+        con.execute("DELETE FROM votes WHERE item_id = ?", (item_id,))
+        con.execute("DELETE FROM items WHERE item_id = ?", (item_id,))
+    if noise:
+        print(f"Removed {len(noise)} section headers / boilerplate lines.")
     rows = con.execute("SELECT item_id, title, matter_name, agenda_note, minutes_note, action_text, "
                        "matter_type, is_council, passed, action FROM items").fetchall()
     for r in rows:

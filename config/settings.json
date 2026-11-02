@@ -26,6 +26,9 @@
     "abstain": ["abstain", "abstained", "recused", "present"]
   },
 
+  "_skip": "Agenda/minutes lines that are not real items: ALL-CAPS section headers with no file number (ROLL CALL, AGENDA, MS. KEARNEY) are always skipped; lines matching this regex are skipped too.",
+  "skip_titles_regex": "^(council observed a moment|there being no objection|no announcements|the meeting (was )?adjourned|pledge of allegiance)",
+
   "_refresh": "Each run re-checks meetings changed since the last run, plus every meeting in this window (days back / days ahead).",
   "refresh_days_back": 45,
   "refresh_days_ahead": 30

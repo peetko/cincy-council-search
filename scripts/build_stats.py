@@ -208,7 +208,11 @@ def lists(con):
             if s:
                 counter[s] += 1
     sponsors = sorted([s for s, n in counter.most_common(60) if n >= 3])
-    return {"bodies": bodies, "sponsors": sponsors, "departments": list(DEPT_RX)}
+    # Everyone who has cast a final-passage vote, most recently active first.
+    voters = [r[0] for r in con.execute("""
+        SELECT v.person FROM votes v JOIN items i ON i.item_id = v.item_id
+        WHERE i.is_final = 1 GROUP BY v.person ORDER BY MAX(i.date) DESC, v.person""")]
+    return {"bodies": bodies, "sponsors": sponsors, "departments": list(DEPT_RX), "voters": voters}
 
 
 def main():

@@ -62,6 +62,10 @@ def build():
             council = body == "Cincinnati City Council"
             lst = []
             lst.append({"EventItemId": (iid := iid + 1), "EventItemTitle": None, "EventItemMatterFile": None})
+            lst.append({"EventItemId": (iid := iid + 1), "EventItemTitle": "ROLL CALL", "EventItemMatterFile": None,
+                        "EventItemMatterId": None, "EventItemActionName": None})
+            lst.append({"EventItemId": (iid := iid + 1), "EventItemTitle": "Council observed a moment of silent prayer.",
+                        "EventItemMatterFile": None, "EventItemMatterId": None, "EventItemActionName": None})
             for k in range(rnd.randint(10, 14) if council else rnd.randint(3, 6)):
                 iid += 1
                 mid += 1
@@ -89,7 +93,7 @@ def build():
                 if past:
                     if final_vote:
                         passed = 1 if rnd.random() < 0.95 else 0
-                        action = "Passed" if kind == "ORDINANCE" else "Adopted"
+                        action = ("Passed Emergency" if "(EMERGENCY)" in title else "Passed") if kind == "ORDINANCE" else "Adopted"
                     elif kind == "MOTION":
                         action = rnd.choice(["Referred", "Adopted", "Held"])
                     else:
@@ -112,7 +116,7 @@ def build():
                     vs = []
                     for m in MEMBERS:
                         r = rnd.random()
-                        val = "Absent" if r < 0.04 else ("Nay" if (r < 0.10 or (m == "Member C" and r < 0.2)) else "Yea")
+                        val = "Absent" if r < 0.04 else ("Abstain" if r < 0.05 else ("No" if (r < 0.10 or (m == "Member C" and r < 0.2)) else "Yes"))
                         vs.append({"VotePersonName": m, "VoteValueName": val, "VoteEventItemId": iid})
                     votes[iid] = vs
             items[eid] = lst

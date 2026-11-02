@@ -88,24 +88,6 @@ CREATE INDEX IF NOT EXISTS items_event ON items(event_id);
 CREATE INDEX IF NOT EXISTS items_date ON items(date);
 CREATE INDEX IF NOT EXISTS items_first_seen ON items(first_seen);
 
--- A slim copy of the columns used for filtering, counting and sorting. The
--- website reads this instead of the full items table, so a search only
--- downloads a small slice of the database file.
-CREATE TABLE IF NOT EXISTS facets (
-  item_id     INTEGER PRIMARY KEY,
-  event_id    INTEGER,
-  date        TEXT,
-  body        TEXT,
-  is_council  INTEGER,
-  kind        TEXT,
-  outcome_cat TEXT,
-  seq         INTEGER,
-  sponsors    TEXT,
-  departments TEXT,
-  mover       TEXT
-);
-CREATE INDEX IF NOT EXISTS facets_date ON facets(date, is_council, seq);
-
 CREATE TABLE IF NOT EXISTS votes (
   item_id   INTEGER,
   person    TEXT,
@@ -148,12 +130,39 @@ def set_meta(con, key, value):
                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, str(value)))
 
 
+FACETS_SCHEMA = """
+DROP TABLE IF EXISTS facets;
+-- A slim copy of the columns used for filtering, counting and sorting. The
+-- website reads this instead of the full items table, so a search only
+-- downloads a small slice of the database file. Rebuilt on every run.
+CREATE TABLE facets (
+  item_id     INTEGER PRIMARY KEY,
+  event_id    INTEGER,
+  date        TEXT,
+  body        TEXT,
+  is_council  INTEGER,
+  kind        TEXT,
+  outcome_cat TEXT,
+  seq         INTEGER,
+  sponsors    TEXT,
+  departments TEXT,
+  mover       TEXT,
+  dissent     TEXT     -- final-passage votes only: "Name|no; Name|abstain"
+);
+CREATE INDEX facets_date ON facets(date, is_council, seq);
+"""
+
+
 def rebuild_search_index(con):
-    con.execute("DELETE FROM facets")
+    con.executescript(FACETS_SCHEMA)
     con.execute("""INSERT INTO facets(item_id, event_id, date, body, is_council, kind, outcome_cat, seq,
-                                      sponsors, departments, mover)
-                   SELECT item_id, event_id, date, body, is_council, kind, outcome_cat, seq,
-                          sponsors, departments, mover FROM items ORDER BY date, item_id""")
+                                      sponsors, departments, mover, dissent)
+                   SELECT i.item_id, i.event_id, i.date, i.body, i.is_council, i.kind, i.outcome_cat, i.seq,
+                          i.sponsors, i.departments, i.mover,
+                          CASE WHEN i.is_final = 1 THEN COALESCE((
+                            SELECT group_concat(v.person || '|' || v.value, '; ') FROM votes v
+                            WHERE v.item_id = i.item_id AND v.value IN ('no', 'abstain')), '') ELSE '' END
+                   FROM items i ORDER BY i.date, i.item_id""")
     con.execute("INSERT INTO items_fts(items_fts) VALUES('rebuild')")
 
 
@@ -215,7 +224,8 @@ def parse_sponsors(title):
 
 KINDS = [("ordinance", "ordinance"), ("resolution", "resolution"), ("motion", "motion"),
          ("communication", "communication"), ("report", "communication"),
-         ("appointment", "appointment"), ("registration", "communication")]
+         ("appointment", "appointment"), ("registration", "communication"),
+         ("presentation", "presentation"), ("statement", "statement")]
 
 
 def classify_kind(matter_type, title):
@@ -224,6 +234,21 @@ def classify_kind(matter_type, title):
         if word in hay:
             return kind
     return "other"
+
+
+SKIP_RX = re.compile(SETTINGS.get("skip_titles_regex") or r"(?!x)x", re.IGNORECASE)
+
+
+def is_noise(title, matter_id, action):
+    """True for section headers and boilerplate lines that aren't real agenda items."""
+    t = (title or "").strip()
+    if matter_id or (action or "").strip():
+        return False
+    if not t:
+        return True
+    if len(t) < 90 and t.upper() == t and any(c.isalpha() for c in t):
+        return True  # "ROLL CALL", "AGENDA", "MS. KEARNEY", "BUDGET AND FINANCE COMMITTEE"
+    return bool(SKIP_RX.search(t))
 
 
 def vote_value(raw):

@@ -1,24 +1,32 @@
 /* Council Record — styles. Colors are defined once here so they are easy to change. */
 :root {
-  --ink: #0f1b2d;
-  --ink-2: #4a5566;
-  --ink-3: #5b6778;
-  --navy: #13233a;
-  --amber: #f2a541;
-  --page: #f4f5f7;
+  /* Cincinnati flag colors: navy river waves, red "C", white ground */
+  --flag-navy: #002673;
+  --flag-red: #c70f2e;
+  --ink: #0d1b3a;
+  --ink-2: #47536a;
+  --ink-3: #5a6680;
+  --navy: var(--flag-navy);
+  --navy-deep: #001a52;
+  --red: var(--flag-red);
+  --red-hover: #a50c26;
+  --page: #f5f7fb;
   --card: #ffffff;
-  --chart: #fcfcfb;
-  --line: #dfe3e8;
-  --grid: #e1e0d9;
-  --axis: #c3c2b7;
-  --link: #1c5cab;
-  --link-hover: #0d366b;
-  --series-cur: #2a78d6;   /* this year / yes / rising */
+  --chart: #ffffff;
+  --line: #dde3ee;
+  --grid: #e3e7ef;
+  --axis: #b9c1d0;
+  --link: #0a4bb8;
+  --link-hover: #002673;
+  --badge: #e5ebf7;
+  /* chart colors (validated blue/red pair, close to the flag's) */
+  --series-cur: #2a78d6;   /* this year, rising topics */
   --series-prev: #b4b2aa;  /* last year */
-  --series-no: #eb6834;    /* no votes */
   --series-down: #e34948;  /* falling topics */
+  --yes: #2a78d6;
+  --no: #e34948;
   --absent: #d7d5ce;
-  --mark: #fde9a8;
+  --mark: #d6e4ff;
 }
 
 * { box-sizing: border-box; }
@@ -27,7 +35,7 @@ body { margin: 0; background: var(--page); font-family: "Public Sans", system-ui
 a { color: var(--link); }
 a:hover { color: var(--link-hover); }
 mark { background: var(--mark); color: var(--ink); padding: 0 2px; border-radius: 2px; }
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, [data-tip]:focus-visible { outline: 3px solid var(--red); outline-offset: 2px; box-shadow: 0 0 0 5px #fff; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
 .muted { color: var(--ink-2); }
@@ -36,14 +44,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 /* ---------- header ---------- */
 header.site { background: var(--navy); color: #fff; }
+.hero { display: flex; flex-direction: column; gap: 14px; }
 header.site .wrap { padding-top: 20px; padding-bottom: 40px; display: flex; flex-direction: column; gap: 28px; }
 .topbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
 .brand { display: flex; align-items: center; gap: 12px; color: #fff; text-decoration: none; }
-.brand .logo { width: 36px; height: 36px; border-radius: 8px; background: var(--amber); display: flex; align-items: center; justify-content: center; }
+.brand .logo { width: 40px; height: 40px; border-radius: 9px; background: var(--red); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px rgba(255,255,255,0.9); }
 .brand b { display: block; font-size: 19px; font-weight: 800; letter-spacing: -0.01em; }
-.brand small { display: block; font-size: 12px; color: #b9c4d4; letter-spacing: 0.04em; text-transform: uppercase; }
+.brand small { display: block; font-size: 12px; color: #c4d0ea; letter-spacing: 0.04em; text-transform: uppercase; }
 nav.main { display: flex; flex-wrap: wrap; gap: 4px; font-size: 15px; font-weight: 600; }
-nav.main a { color: #d6deea; text-decoration: none; padding: 10px 14px; border-radius: 8px; }
+nav.main a { color: #dbe4f5; text-decoration: none; padding: 10px 14px; border-radius: 8px; }
 nav.main a:hover { color: #fff; background: rgba(255,255,255,0.08); }
 nav.main a.on { color: #fff; background: rgba(255,255,255,0.12); }
 h1 { margin: 0; font-size: 34px; line-height: 1.15; font-weight: 800; letter-spacing: -0.02em; }
@@ -51,21 +60,28 @@ h1 { margin: 0; font-size: 34px; line-height: 1.15; font-weight: 800; letter-spa
 .searchbar { display: flex; flex-wrap: wrap; gap: 10px; }
 .searchbox { flex: 999 1 420px; display: flex; align-items: center; gap: 10px; background: #fff; border-radius: 10px; padding: 0 16px; min-height: 56px; }
 .searchbox input { flex: 1; border: 0; outline: none; font: inherit; font-size: 18px; color: var(--ink); background: transparent; min-width: 0; height: 54px; }
-.searchbar button { flex: 1 1 120px; min-height: 56px; border: 0; border-radius: 10px; background: var(--amber); color: var(--navy); font: inherit; font-size: 17px; font-weight: 700; cursor: pointer; }
-.searchbar button:hover { background: #f5b764; }
+.searchbar button { flex: 1 1 120px; min-height: 56px; border: 0; border-radius: 10px; background: var(--red); color: #fff; font: inherit; font-size: 17px; font-weight: 700; cursor: pointer; }
+.searchbar button:hover { background: var(--red-hover); }
 .tries { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 14px; }
-.tries span { color: #b9c4d4; }
+.tries span { color: #c4d0ea; }
 .tries button { color: #fff; background: transparent; border: 1px solid rgba(255,255,255,0.28); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 14px; cursor: pointer; min-height: 36px; }
 .tries button:hover { background: rgba(255,255,255,0.1); }
-.hint { font-size: 13px; color: #b9c4d4; margin: 0; }
+.hint { font-size: 13px; color: #c4d0ea; margin: 0; }
+.tip-demo { display: inline-flex; width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid currentColor; font: 700 11px/1 "Public Sans", sans-serif; align-items: center; justify-content: center; vertical-align: -3px; }
+
+/* Three wavy lines, after the Ohio River waves on the City flag */
+.river { height: 30px; background-color: #fff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='30' viewBox='0 0 48 30'%3E%3Cg fill='none' stroke='%23002673' stroke-width='2.4'%3E%3Cpath d='M0 7 Q12 2 24 7 T48 7'/%3E%3Cpath d='M0 15 Q12 10 24 15 T48 15'/%3E%3Cpath d='M0 23 Q12 18 24 23 T48 23'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: repeat-x; background-position: center; border-bottom: 1px solid var(--line); }
 
 /* ---------- main ---------- */
 main { padding-top: 28px; padding-bottom: 56px; display: flex; flex-direction: column; gap: 40px; }
-.filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
-.filters .f { display: flex; flex-direction: column; gap: 6px; flex: 1 1 170px; min-width: 0; }
+.filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 12px; align-items: end; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.filters .f { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.filters .lab { display: flex; align-items: center; gap: 2px; min-height: 24px; }
 .filters label { font-size: 12px; font-weight: 700; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.05em; }
 .filters select { font: inherit; font-size: 15px; min-height: 44px; border: 1px solid #c9d0d9; border-radius: 8px; padding: 0 10px; background: #fff; color: var(--ink); width: 100%; }
-.filters .reset { flex: 0 0 auto; min-height: 44px; font: inherit; font-size: 14px; font-weight: 700; color: var(--link); background: none; border: 0; cursor: pointer; padding: 0 8px; }
+.filters .reset { justify-self: start; min-height: 44px; font: inherit; font-size: 14px; font-weight: 700; color: var(--link); background: none; border: 0; cursor: pointer; padding: 0 8px; }
 
 .row { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; }
 .results { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
@@ -86,9 +102,9 @@ h2 { margin: 0; font-size: 22px; font-weight: 800; }
 
 article.result { padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; }
 .result .tags { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.kind { font-size: 12px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--navy); background: #e6ebf2; border-radius: 6px; padding: 4px 8px; }
+.kind { font-size: 12px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--navy); background: var(--badge); cursor: help; border-radius: 6px; padding: 4px 8px; }
 .file { font-size: 13px; color: var(--ink-2); }
-.outcome { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; border: 1px solid #c9d0d9; border-radius: 999px; padding: 4px 10px; }
+.outcome { cursor: help; margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; border: 1px solid #c9d0d9; border-radius: 999px; padding: 4px 10px; }
 .result p { margin: 0; font-size: 16px; line-height: 1.5; overflow-wrap: anywhere; }
 .result .meta { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 14px; color: var(--ink-2); }
 .result .meta strong { color: var(--ink); font-weight: 600; }
@@ -99,7 +115,8 @@ article.result { padding: 18px 20px; display: flex; flex-direction: column; gap:
 aside.kpis { flex: 1 1 300px; min-width: 260px; display: flex; flex-direction: column; gap: 12px; }
 aside.kpis h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-2); }
 .kpi { padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
-.kpi .l { font-size: 14px; color: var(--ink-2); font-weight: 600; }
+.kpi .l { font-size: 14px; color: var(--ink-2); font-weight: 600; display: flex; align-items: center; justify-content: space-between; }
+.kpi { border-top: 3px solid var(--navy); }
 .kpi .v { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; }
 .kpi .d { font-size: 13px; color: var(--ink-2); }
 
@@ -107,7 +124,7 @@ aside.kpis h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.06
 #trends { display: flex; flex-direction: column; gap: 20px; border-top: 1px solid var(--line); padding-top: 32px; }
 .trends-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
 .trends-head h2 { font-size: 26px; letter-spacing: -0.01em; }
-.toggle { display: flex; background: #e6ebf2; border-radius: 10px; padding: 4px; gap: 4px; }
+.toggle { display: flex; background: var(--badge); border-radius: 10px; padding: 4px; gap: 4px; }
 .toggle button { font: inherit; font-size: 15px; font-weight: 700; min-height: 44px; padding: 0 18px; border: 0; border-radius: 8px; cursor: pointer; background: transparent; color: var(--navy); }
 .toggle button[aria-pressed="true"] { background: var(--navy); color: #fff; }
 .charts { display: flex; flex-wrap: wrap; gap: 20px; }
@@ -162,3 +179,21 @@ tbody th { text-align: left; font-weight: 600; }
 
 footer.site { border-top: 1px solid var(--line); padding-top: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--ink-2); line-height: 1.5; }
 .empty { font-size: 14px; color: var(--ink-2); padding: 8px 0; }
+
+/* ---------- explainer tooltips ---------- */
+.lab { display: inline-flex; align-items: center; gap: 2px; }
+.lab.end { justify-content: flex-end; }
+button.tip { flex: 0 0 auto; width: 28px; height: 28px; margin: -6px -4px -6px 0; padding: 0; border: 0; background: none; cursor: help; display: inline-flex; align-items: center; justify-content: center; color: var(--ink-3); font: 700 11px/1 "Public Sans", sans-serif; text-transform: none; letter-spacing: 0; }
+button.tip::before { content: "i"; display: inline-flex; width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid currentColor; align-items: center; justify-content: center; font-style: normal; }
+button.tip { font-size: 0; }
+button.tip::before { font-size: 11px; }
+button.tip:hover, button.tip[aria-expanded="true"] { color: var(--red); }
+#tooltip { position: fixed; z-index: 100; max-width: min(340px, calc(100vw - 16px)); background: var(--ink); color: #fff; border-radius: 10px; padding: 12px 14px; font-size: 14px; line-height: 1.45; box-shadow: 0 8px 24px rgba(13,27,58,0.25); pointer-events: none; display: flex; flex-direction: column; gap: 4px; border-top: 3px solid var(--red); text-transform: none; letter-spacing: 0; font-weight: 400; text-align: left; }
+#tooltip b { font-weight: 700; }
+
+/* ---------- split votes ---------- */
+.dissent { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 14px; color: var(--ink); background: #fdecee; border-radius: 8px; padding: 8px 10px; }
+.dissent .who b { color: #9f0b24; }
+.count-btn { font: inherit; font-variant-numeric: tabular-nums; color: var(--link); background: none; border: 0; padding: 4px 2px; min-height: 32px; cursor: pointer; text-decoration: underline; }
+.count-btn:disabled { color: var(--ink-3); text-decoration: none; cursor: default; }
+.kpi-link { font: inherit; font-size: 13px; font-weight: 700; color: var(--link); background: none; border: 0; padding: 4px 0 0; cursor: pointer; text-align: left; text-decoration: underline; }

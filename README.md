@@ -4,6 +4,8 @@ A free, searchable record of Cincinnati City Council and committee meetings sinc
 
 - **Search** every agenda and minutes item: ordinances, resolutions, motions, communications. Filter by type, meeting body, sponsor, department, outcome and date. Each result links to the minutes or agenda PDF, the Legistar legislation page, and the roll-call votes.
 - **Running stats**: what's passed this year compared with last year, which topics are coming up more or less often (month, quarter or year), and how each member voted.
+- **Split votes**: Council votes are usually unanimous, so the site makes the exceptions easy to find. Filter to any split vote, or click a member's "No / abstain" count to see exactly what they opposed.
+- **Built-in explainers**: hover over or tap the ⓘ icons, item types and outcomes to learn how Council works: what an ordinance is, what "passed as an emergency" means, the three-readings rule, and more.
 - **Alerts**: emails when a watched phrase (e.g. "Kroger") appears on a newly posted agenda.
 
 Everything runs on free GitHub services. There's no server to rent.
@@ -67,7 +69,7 @@ All the knobs are plain JSON files in `config/`. Edit them right on GitHub (penc
 | `config/departments.json` | Department names and the words that identify them, used for the Department filter. |
 | `config/settings.json` | Which meeting counts as full Council, which actions count as a final vote, how vote words (Yea/Nay/Absent…) map to yes/no/absent, and how far back to refresh. |
 
-Colors and fonts live at the top of `site/styles.css`.
+Colors and fonts live at the top of `site/styles.css` (Cincinnati flag navy `#002673` and red `#C70F2E`). The tooltip explanations are in `site/glossary.js`, one line per term, so you can reword them without touching any code.
 
 ## Run it on your own computer (optional)
 
@@ -99,7 +101,7 @@ scripts/build_stats.py         compute site/data/stats.json
 scripts/alerts.py              email digests for watched terms
 scripts/report.py              data check
 scripts/serve.py               local preview server
-site/                          the website (index.html, styles.css, app.js, vendor/)
+site/                          the website (index.html, styles.css, app.js, glossary.js, vendor/)
 tests/fake_legistar.py         a fake Legistar API used for testing
 ```
 
