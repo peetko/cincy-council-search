@@ -216,6 +216,11 @@ def retag(con):
         con.execute("DELETE FROM items WHERE item_id = ?", (item_id,))
     if noise:
         print(f"Removed {len(noise)} section headers / boilerplate lines.")
+    # Vote words: re-map in case vote_values in settings.json changed.
+    for raw, old in con.execute("SELECT DISTINCT value_raw, value FROM votes").fetchall():
+        new = vote_value(raw)
+        if new != old:
+            con.execute("UPDATE votes SET value = ? WHERE value_raw IS ? AND value = ?", (new, raw, old))
     con.execute("UPDATE items SET matter_url = ? || '/gateway.aspx?M=L&ID=' || matter_id "
                 "WHERE matter_id IS NOT NULL", (SITE,))
     today = dt.datetime.now(dt.timezone(dt.timedelta(hours=-5))).date().isoformat()

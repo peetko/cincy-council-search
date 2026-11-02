@@ -383,7 +383,7 @@
     const rows = await d.query("SELECT person, value_raw, value FROM votes WHERE item_id = ? ORDER BY value, person", [Number(itemId)]);
     const groups = {};
     rows.forEach((v) => { (groups[v.value] = groups[v.value] || []).push(v.person); });
-    const order = [["yes", "Yes"], ["no", "No"], ["abstain", "Abstained"], ["absent", "Absent"], ["other", "Other"]];
+    const order = [["yes", "Yes"], ["no", "No"], ["abstain", "Abstained"], ["remote", "Took part remotely"], ["absent", "Absent"], ["other", "Other"]];
     box.innerHTML = rows.length
       ? order.filter(([k]) => groups[k]).map(([k, l]) => `<div style="font-size:14px"><b>${l} (${groups[k].length}):</b> ${esc(groups[k].join(", "))}</div>`).join("")
       : `<div style="font-size:14px" class="muted">No roll call recorded for this item.</div>`;
@@ -501,6 +501,7 @@
 
     // Members
     $("members-sub").textContent = `${p.final_votes.toLocaleString()} roll-call votes on final passage, ${p.short}`;
+    $("remote-legend").hidden = !p.members.some((m) => m.remote);
     $("member-rows").innerHTML = p.members.length ? p.members.map((m) => {
       const tot = m.total || 1;
       const out = m.absent + m.abstain;
@@ -508,8 +509,8 @@
       return `<tr>
         <th scope="row"><button type="button" data-member="${esc(m.name)}" title="Open ${esc(m.name)}'s page" style="font:inherit;font-weight:600;color:var(--ink);background:none;border:0;padding:0;cursor:pointer;text-align:left">${esc(m.name)}</button></th>
         <td class="num">${m.present}%</td>
-        <td><div class="stack" title="${esc(m.name)}: ${m.yes} yes, ${m.no} no, ${out} absent or abstained">${
-          [[m.yes, "var(--yes)"], [m.no, "var(--no)"], [out, "var(--absent)"]]
+        <td><div class="stack" title="${esc(m.name)}: ${m.yes} yes, ${m.no} no${m.remote ? `, ${m.remote} remote` : ""}, ${out} absent or abstained">${
+          [[m.yes, "var(--yes)"], [m.remote || 0, "var(--remote)"], [m.no, "var(--no)"], [out, "var(--absent)"]]
             .filter(([n]) => n > 0)  // skip empty segments so gaps don't add up
             .map(([n, c]) => `<div style="flex:${n} 1 0;background:${c}"></div>`).join("")}</div></td>
         <td class="num"><button type="button" class="count-btn" data-vote="${esc(m.name)}" data-date="${{ month: "mtd", quarter: "qtd", year: "ytd" }[state.period]}" ${dissent ? "" : "disabled"} aria-label="${dissent} no or abstain votes by ${esc(m.name)}: show them">${dissent}</button></td>

@@ -26,6 +26,7 @@
   --yes: #2a78d6;
   --no: #e34948;
   --absent: #d7d5ce;
+  --remote: #9cc2ef;  /* took part remotely, no yes/no recorded */
   --mark: #d6e4ff;
 }
 

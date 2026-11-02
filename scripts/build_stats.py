@@ -73,7 +73,7 @@ def vote_summary(con, a, b):
     """Per final-passage vote: how many members took part, and was it unanimous."""
     rows = con.execute("""
         SELECT i.item_id,
-               SUM(v.value IN ('yes','no','abstain')) AS present,
+               SUM(v.value IN ('yes','no','abstain','remote')) AS present,
                SUM(v.value = 'no') AS nos,
                COUNT(v.person) AS n
         FROM items i JOIN votes v ON v.item_id = i.item_id
@@ -216,7 +216,7 @@ def member_profiles(con, today):
         total = len(rows)
         absent = c["absent"] + c["other"]
         against = sum(1 for v in rows if v["value"] in ("yes", "no") and v["value"] != majority[v["item_id"]])
-        return {"total": total, "yes": c["yes"], "no": c["no"], "abstain": c["abstain"], "absent": absent,
+        return {"total": total, "yes": c["yes"], "no": c["no"], "abstain": c["abstain"], "absent": absent, "remote": c["remote"],
                 "against": against, "present": round((total - absent) / total * 100) if total else 0}
 
     people = collections.defaultdict(list)
@@ -287,7 +287,7 @@ def members(con, sp):
     for person, c in people.items():
         absent = c["absent"] + c["other"]
         out.append({"name": person, "total": c["total"], "yes": c["yes"], "no": c["no"],
-                    "absent": absent, "abstain": c["abstain"], "against": c["against"],
+                    "absent": absent, "abstain": c["abstain"], "remote": c["remote"], "against": c["against"],
                     "present": round((c["total"] - absent) / c["total"] * 100) if c["total"] else 0})
     out.sort(key=lambda m: m["name"].split()[-1] if m["name"] else "")
     return {"final_votes": len(by_item), "members": out}

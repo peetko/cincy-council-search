@@ -18,12 +18,13 @@
   "final_passage_regex": "^(passed|passed emergency|adopted)$",
   "not_final_regex": "suspen|reading|clause|amend",
 
-  "_vote_values": "How Legistar vote words map to yes / no / absent / abstain. Anything unlisted counts as 'other'.",
+  "_vote_values": "How Legistar vote words map to yes / no / absent / abstain / remote. 'remote' (taking part remotely, with no yes or no recorded) counts as present. Anything unlisted counts as 'other' (treated as absent).",
   "vote_values": {
     "yes": ["yea", "yes", "aye", "affirmative", "y"],
     "no": ["nay", "no", "n", "negative"],
     "absent": ["absent", "excused", "not present"],
-    "abstain": ["abstain", "abstained", "recused", "present"]
+    "abstain": ["abstain", "abstained", "recused", "present"],
+    "remote": ["remote"]
   },
 
   "_skip": "Agenda/minutes lines that are not real items: ALL-CAPS section headers with no file number (ROLL CALL, AGENDA, MS. KEARNEY) are always skipped; lines matching this regex are skipped too.",
