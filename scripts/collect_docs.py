@@ -47,7 +47,7 @@ OCR_AVAILABLE = bool(shutil.which("tesseract") and shutil.which("pdftoppm"))
 
 # Which attachment is "the legislation": its name says so, and it isn't supporting material.
 LEGIS_RX = re.compile(r"ordinance|resolution|motion|legislation|\bord\b|\bres\b|emergency|amended|substitute|version", re.I)
-SKIP_RX = re.compile(r"exhibit|attachment\s*[a-z0-9]\b|\bmap|survey|plat\b|agreement|contract|lease|budget|spreadsheet|"
+SKIP_RX = re.compile(r"exhibit|attachment|certified copy|original\b|\bmap|survey|plat\b|agreement|contract|lease|budget|spreadsheet|"
                      r"presentation|powerpoint|slides|comment|petition|letter|e-?mail|correspondence|photo|rendering|"
                      r"site plan|application|invoice|report|memo|transmittal|minutes|resume|bio\b", re.I)
 
@@ -98,7 +98,7 @@ def rtf_to_text(rtf):
     return rtf.replace("{", "").replace("}", "")
 
 
-RULES_VERSION = "3"  # bump when the rules change, to re-check what was saved under older rules
+RULES_VERSION = "4"  # bump when the rules change, to re-check what was saved under older rules
 MARKER = re.compile(r"(?im)^\s*\.\.\s*(title|body|header|footer|recommendation|summary|end)\b[^\n]*$")
 
 
@@ -276,6 +276,10 @@ def main():
     row = docs.execute("SELECT value FROM meta WHERE key = 'rules_version'").fetchone()
     if not row or row[0] != RULES_VERSION:
         n = docs.execute("DELETE FROM docs WHERE NOT (status = 'ok' AND source IN ('attachment', 'ocr'))").rowcount
+        wrong = [r[0] for r in docs.execute("SELECT matter_id, name FROM docs WHERE name IS NOT NULL") if SKIP_RX.search(r[1])]
+        for mid in wrong:  # picked under older rules, but it's supporting material, not the legislation
+            docs.execute("DELETE FROM docs WHERE matter_id = ?", (mid,))
+        n += len(wrong)
         docs.execute("INSERT OR REPLACE INTO meta VALUES ('rules_version', ?)", (RULES_VERSION,))
         docs.commit()
         print(f"Collection rules changed: {n} saved results will be fetched again.")
