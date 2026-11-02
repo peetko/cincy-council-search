@@ -133,24 +133,31 @@ def set_meta(con, key, value):
 
 FACETS_SCHEMA = """
 DROP TABLE IF EXISTS facets;
--- A slim copy of the columns used for filtering, counting and sorting. The
--- website reads this instead of the full items table, so a search only
--- downloads a small slice of the database file. Rebuilt on every run.
+DROP TABLE IF EXISTS body_names;
+DROP TABLE IF EXISTS dept_names;
+DROP TABLE IF EXISTS topic_names;
+-- A slim copy of the columns used for filtering, counting and sorting. The website
+-- reads this instead of the full items table, so a search downloads only a small
+-- slice of the database file. Names are stored as short number codes (looked up in
+-- the *_names tables) to keep it small. Rebuilt on every run.
+CREATE TABLE body_names (id INTEGER PRIMARY KEY, name TEXT UNIQUE);
+CREATE TABLE dept_names (id INTEGER PRIMARY KEY, name TEXT UNIQUE);
+CREATE TABLE topic_names (id INTEGER PRIMARY KEY, name TEXT UNIQUE);
 CREATE TABLE facets (
   item_id     INTEGER PRIMARY KEY,
   event_id    INTEGER,
   matter_id   INTEGER,
   matter_file TEXT,
   date        TEXT,
-  body        TEXT,
+  body_id     INTEGER,
   is_council  INTEGER,
   kind        TEXT,
   outcome_cat TEXT,
   seq         INTEGER,
   sponsors    TEXT,
-  departments TEXT,
   mover       TEXT,
-  topics      TEXT,
+  dept_ids    TEXT,    -- like "|3|12|"
+  topic_ids   TEXT,    -- like "|1|5|"
   dissent     TEXT     -- final-passage votes only: "Name|no; Name|abstain"
 );
 CREATE INDEX facets_date ON facets(date, is_council, seq);
@@ -161,14 +168,28 @@ CREATE INDEX facets_file ON facets(matter_file);
 
 def rebuild_search_index(con):
     con.executescript(FACETS_SCHEMA)
-    con.execute("""INSERT INTO facets(item_id, event_id, matter_id, matter_file, date, body, is_council, kind, outcome_cat, seq,
-                                      sponsors, departments, mover, topics, dissent)
-                   SELECT i.item_id, i.event_id, i.matter_id, NULLIF(i.matter_file, ''), i.date, i.body, i.is_council, i.kind, i.outcome_cat, i.seq,
-                          i.sponsors, i.departments, i.mover, i.topics,
-                          CASE WHEN i.is_final = 1 THEN COALESCE((
-                            SELECT group_concat(v.person || '|' || v.value, '; ') FROM votes v
-                            WHERE v.item_id = i.item_id AND v.value IN ('no', 'abstain')), '') ELSE '' END
-                   FROM items i ORDER BY i.date, i.item_id""")
+    bodies = [r[0] for r in con.execute("SELECT DISTINCT body FROM items WHERE body <> '' ORDER BY body")]
+    con.executemany("INSERT INTO body_names(id, name) VALUES(?, ?)", list(enumerate(bodies, 1)))
+    con.executemany("INSERT INTO dept_names(id, name) VALUES(?, ?)", list(enumerate(DEPT_RX, 1)))
+    con.executemany("INSERT INTO topic_names(id, name) VALUES(?, ?)", list(enumerate(TOPIC_RX, 1)))
+    body_id = {b: i for i, b in enumerate(bodies, 1)}
+    dept_id = {d: i for i, d in enumerate(DEPT_RX, 1)}
+    topic_id = {t: i for i, t in enumerate(TOPIC_RX, 1)}
+
+    def codes(text, table):
+        ids = [table[x.strip()] for x in (text or "").split(";") if x.strip() in table]
+        return "|" + "|".join(map(str, ids)) + "|" if ids else ""
+
+    rows = con.execute("""
+        SELECT i.item_id, i.event_id, i.matter_id, NULLIF(i.matter_file, ''), i.date, i.body, i.is_council,
+               i.kind, i.outcome_cat, i.seq, i.sponsors, i.mover, i.departments, i.topics,
+               CASE WHEN i.is_final = 1 THEN COALESCE((
+                 SELECT group_concat(v.person || '|' || v.value, '; ') FROM votes v
+                 WHERE v.item_id = i.item_id AND v.value IN ('no', 'abstain')), '') ELSE '' END
+        FROM items i ORDER BY i.date, i.item_id""").fetchall()
+    con.executemany("INSERT INTO facets VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [
+        (r[0], r[1], r[2], r[3], r[4], body_id.get(r[5]), r[6], r[7], r[8], r[9], r[10] or "", r[11] or "",
+         codes(r[12], dept_id), codes(r[13], topic_id), r[14]) for r in rows])
     con.execute("INSERT INTO items_fts(items_fts) VALUES('rebuild')")
 
 

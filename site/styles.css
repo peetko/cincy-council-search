@@ -59,6 +59,8 @@ h1 { margin: 0; font-size: 34px; line-height: 1.15; font-weight: 800; letter-spa
 @media (max-width: 640px) { h1 { font-size: 26px; } }
 .searchbar { display: flex; flex-wrap: wrap; gap: 10px; }
 .searchbox { flex: 999 1 420px; display: flex; align-items: center; gap: 10px; background: #fff; border-radius: 10px; padding: 0 16px; min-height: 56px; }
+.searchbox:focus-within { outline: 3px solid var(--red); outline-offset: 2px; }
+.searchbox input:focus, .searchbox input:focus-visible { outline: none; box-shadow: none; }
 .searchbox input { flex: 1; border: 0; outline: none; font: inherit; font-size: 18px; color: var(--ink); background: transparent; min-width: 0; height: 54px; }
 .searchbar button { flex: 1 1 120px; min-height: 56px; border: 0; border-radius: 10px; background: var(--red); color: #fff; font: inherit; font-size: 17px; font-weight: 700; cursor: pointer; }
 .searchbar button:hover { background: var(--red-hover); }
@@ -234,3 +236,11 @@ details.timeline li.more-steps { display: block; color: var(--ink-3); font-style
 .upcoming .b { font-size: 14px; font-weight: 700; }
 .upcoming .n { font-size: 13px; color: var(--ink-2); }
 .upcoming .pdf { font-size: 13px; font-weight: 600; white-space: nowrap; padding-top: 4px; }
+
+/* ---------- search progress + timing ---------- */
+.searching { display: inline-flex; align-items: center; gap: 10px; }
+.spinner { width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--badge); border-top-color: var(--red); animation: spin 0.8s linear infinite; flex: 0 0 auto; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
+.results.busy #result-list { opacity: 0.45; transition: opacity 0.15s; }
+.timing { font-size: 12px; color: var(--ink-3); margin: -8px 0 0; min-height: 16px; }

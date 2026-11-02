@@ -58,7 +58,7 @@
         .then((info) => {
           const cacheBust = (info && info.version) || (stats && stats.updated_at) || String(Date.now());
           const config = info
-            ? { serverMode: "chunked", requestChunkSize: 4096, databaseLengthBytes: info.databaseLengthBytes,
+            ? { serverMode: "chunked", requestChunkSize: 65536, databaseLengthBytes: info.databaseLengthBytes,
                 serverChunkSize: info.serverChunkSize, suffixLength: info.suffixLength,
                 urlPrefix: new URL(info.urlPrefix, base).href, cacheBust }
             : { serverMode: "full", url: new URL("data/council.db", base).href, requestChunkSize: 4096, cacheBust };
@@ -79,11 +79,11 @@
     if (state.kind) { where.push("f.kind = ?"); args.push(state.kind); }
     if (state.body === "@council") where.push("f.is_council = 1");
     else if (state.body === "@committees") where.push("f.is_council = 0");
-    else if (state.body) { where.push("f.body = ?"); args.push(state.body); }
+    else if (state.body) { where.push("f.body_id = (SELECT id FROM body_names WHERE name = ?)"); args.push(state.body); }
     if (state.sponsor) { where.push("(f.sponsors LIKE ? OR f.mover = ?)"); args.push("%" + state.sponsor + "%", state.sponsor); }
-    if (state.dept) { where.push("f.departments LIKE ?"); args.push("%" + state.dept + "%"); }
+    if (state.dept) { where.push("f.dept_ids LIKE '%|' || (SELECT id FROM dept_names WHERE name = ?) || '|%'"); args.push(state.dept); }
     if (state.outcome) { where.push("f.outcome_cat = ?"); args.push(state.outcome); }
-    if (state.topic) { where.push("f.topics LIKE ?"); args.push("%" + state.topic + "%"); }
+    if (state.topic) { where.push("f.topic_ids LIKE '%|' || (SELECT id FROM topic_names WHERE name = ?) || '|%'"); args.push(state.topic); }
     if (state.vote === "@split") where.push("f.dissent <> ''");
     else if (state.vote) { where.push("f.dissent LIKE ?"); args.push("%" + state.vote + "|%"); }
     const t = today();
@@ -117,6 +117,8 @@
   function searchParts() {
     const { where, args } = whereClause();
     const fts = ftsQuery(state.q);
+    // The default "latest items" view only needs recent meetings; don't group all six years.
+    if (!fts && !anyFilter()) { where.push("f.date >= ?"); args.push(addDays(today(), -90)); }
     let from, allArgs, order;
     if (fts) {
       from = "items_fts JOIN facets f ON f.item_id = items_fts.rowid";
@@ -138,6 +140,21 @@
   }
 
   async function runSearch(append) {
+    const started = performance.now();
+    $("results").classList.add("busy");
+    if (append) { $("more").textContent = "Loading…"; }
+    else { $("res-h").innerHTML = `<span class="searching"><span class="spinner" aria-hidden="true"></span>Searching…</span>`; $("timing").textContent = ""; }
+    try { await runSearchInner(append); }
+    finally {
+      $("results").classList.remove("busy");
+      $("more").textContent = "Show more results";
+      const secs = ((performance.now() - started) / 1000).toFixed(1);
+      const total = stats ? stats.items_indexed.toLocaleString() : "all";
+      $("timing").textContent = (state.q.trim() || anyFilter()) ? `Searched ${total} agenda and minutes items in ${secs} seconds` : "";
+    }
+  }
+
+  async function runSearchInner(append) {
     const d = await db();
     if (state.q.trim() && !ftsQuery(state.q)) { renderNothing("Type at least one word or number."); return; }
     const { fts, allArgs, order, hits } = searchParts();
@@ -149,14 +166,30 @@
       // Step 2: every step in those pieces' histories, plus highlighted snippets of the matches.
       let steps = [], snips = [];
       if (keys.length) {
-        steps = await d.query(`SELECT ${COLS} FROM items i JOIN meetings m ON m.event_id = i.event_id
-                               WHERE i.matter_id IN (${marks(mids)}) OR i.item_id IN (${marks(lone)})
-                               ORDER BY i.date, i.is_council, i.seq`, [...mids, ...lone]);
-        if (fts) snips = await d.query(`SELECT i.item_id, COALESCE(i.matter_id, -i.item_id) AS k,
-                                          snippet(items_fts, -1, char(1), char(2), ' … ', 60) AS snip
-                                        FROM items_fts JOIN items i ON i.item_id = items_fts.rowid
-                                        WHERE items_fts MATCH ? AND (i.matter_id IN (${marks(mids)}) OR i.item_id IN (${marks(lone)}))`,
-                                       [fts, ...mids, ...lone]);
+        // Only include the lists that have something in them: an empty "IN ()" makes SQLite
+        // scan the whole items table, which means downloading most of the database.
+        const conds = [], cargs = [];
+        if (mids.length) { conds.push(`i.matter_id IN (${marks(mids)})`); cargs.push(...mids); }
+        if (lone.length) { conds.push(`i.item_id IN (${marks(lone)})`); cargs.push(...lone); }
+        steps = await d.query(conds.map((c) => `SELECT ${COLS} FROM items i JOIN meetings m ON m.event_id = i.event_id WHERE ${c}`)
+          .join(" UNION ALL ") + " ORDER BY 2, 3", cargs).then((rows) => rows.sort((a, b) =>
+            a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+        if (fts) {
+          // Pick one matching item per card using the slim facets table, then build snippets for
+          // just those items (snippet() reads the full text, so keep it to 20 rows).
+          const fconds = [], fargs = [fts];
+          if (mids.length) { fconds.push(`f.matter_id IN (${marks(mids)})`); fargs.push(...mids); }
+          if (lone.length) { fconds.push(`f.item_id IN (${marks(lone)})`); fargs.push(...lone); }
+          const hitRows = await d.query(`SELECT ${KEY} AS k, MIN(f.item_id) AS id FROM items_fts JOIN facets f ON f.item_id = items_fts.rowid
+                                         WHERE items_fts MATCH ? AND (${fconds.join(" OR ")}) GROUP BY k`, fargs);
+          const ids = hitRows.map((h) => h.id);
+          if (ids.length) {
+            snips = await d.query(`SELECT items_fts.rowid AS item_id, snippet(items_fts, -1, char(1), char(2), ' … ', 60) AS snip
+                                   FROM items_fts WHERE items_fts MATCH ? AND items_fts.rowid IN (${marks(ids)})`, [fts, ...ids]);
+            const kOf = new Map(hitRows.map((h) => [h.id, h.k]));
+            snips.forEach((x) => { x.k = kOf.get(x.item_id); });
+          }
+        }
       }
       if (!append) {
         const [c] = await d.query(`SELECT COUNT(DISTINCT k) AS n, COUNT(DISTINCT ev) AS meetings FROM ${hits}`, allArgs);
@@ -199,7 +232,8 @@
     else h = anyFilter() ? `${things(n)} match` : "Latest agenda and minutes items";
     if (state.file && n === 0) h = `File ${esc(state.file)} not found`;
     $("res-h").innerHTML = h;
-    $("res-sub").textContent = `in ${meetings.toLocaleString()} meeting${meetings === 1 ? "" : "s"}`;
+    $("res-sub").textContent = (isSearch || anyFilter()) ? `in ${meetings.toLocaleString()} meeting${meetings === 1 ? "" : "s"}`
+      : `from ${meetings.toLocaleString()} meetings in the last 90 days and coming up`;
     $("sorter").hidden = !n;
     document.querySelectorAll("#sorter button[data-sort]").forEach((b) => { b.hidden = !isSearch; b.setAttribute("aria-pressed", String(b.dataset.sort === state.sort)); });
     document.querySelector("#sorter .sortlabel").hidden = !isSearch;
@@ -604,7 +638,6 @@
     state.q = $("q").value;
     state.offset = 0;
     writeUrl();
-    $("res-h").textContent = "Searching…";
     runSearch(false);
   }
 

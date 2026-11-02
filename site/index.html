@@ -129,7 +129,7 @@
   </form>
 
   <div class="row">
-    <section class="results" aria-labelledby="res-h" aria-live="polite">
+    <section class="results" id="results" aria-labelledby="res-h" aria-live="polite">
       <div class="results-head">
         <h2 id="res-h">Loading…</h2>
         <div class="sorter" id="sorter" hidden>
@@ -141,6 +141,7 @@
           <button type="button" class="linkish csv" id="csv" hidden>Download CSV</button>
         </div>
       </div>
+      <p class="timing" id="timing" aria-live="off"></p>
       <div class="card spark" id="spark" hidden>
         <div class="head"><span class="lab"><b>Mentions per quarter</b><button type="button" class="tip" data-tip="spark" aria-label="About this chart">i</button></span><span class="muted" id="spark-range"></span></div>
         <div class="bars" id="spark-bars" role="img"></div>
