@@ -1,4 +1,4 @@
-/* Council Record — page logic.
+/* Plum Street Ledger — page logic.
  *
  * How it works, briefly:
  *  - data/stats.json holds the pre-computed numbers for the side panel and charts.
@@ -243,7 +243,7 @@
   async function reconnect() {
     dbPromise = null;
     try { const r = await fetch("data/stats.json", { cache: "no-cache" }); if (r.ok) stats = await r.json(); } catch (e) { /* keep old stats */ }
-    console.info("Council Record: the data was updated while this page was open; reconnected.");
+    console.info("Plum Street Ledger: the data was updated while this page was open; reconnected.");
     $("timing").textContent = "The data was just updated; reconnecting…";
     return db();
   }

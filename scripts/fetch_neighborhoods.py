@@ -148,7 +148,7 @@ def to_features(osm):
 
 
 def get_json(url, timeout=120):
-    req = urllib.request.Request(url, headers={"User-Agent": "council-record (github.com)"})
+    req = urllib.request.Request(url, headers={"User-Agent": "plum-street-ledger (github.com)"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode())
 
@@ -203,7 +203,7 @@ def download():
     for url in ENDPOINTS:
         for attempt in range(2):
             try:
-                req = urllib.request.Request(url, data=body, headers={"User-Agent": "council-record (github.com)"})
+                req = urllib.request.Request(url, data=body, headers={"User-Agent": "plum-street-ledger (github.com)"})
                 with urllib.request.urlopen(req, timeout=240) as r:
                     return json.loads(r.read().decode())
             except Exception as e:  # network trouble: try again, then the next server
