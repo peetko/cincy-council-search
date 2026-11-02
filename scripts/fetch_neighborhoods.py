@@ -24,13 +24,18 @@ from common import HOOD_RX, ROOT
 OUT = os.path.join(ROOT, "site", "data", "neighborhoods.geojson")
 ENDPOINTS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"]
 BBOX = "39.04,-84.72,39.23,-84.36"  # south, west, north, east around Cincinnati
+# Neighborhoods can be mapped as multi-part "relations" or as single closed outlines ("ways").
 QUERY = f"""[out:json][timeout:180];
 (
   rel({BBOX})["boundary"="administrative"]["admin_level"~"^(9|10|11)$"];
   rel({BBOX})["place"~"^(neighbourhood|suburb|quarter)$"];
   rel({BBOX})["boundary"~"^(neighborhood|neighbourhood|place)$"];
+  way({BBOX})["boundary"="administrative"]["admin_level"~"^(9|10|11)$"];
+  way({BBOX})["place"~"^(neighbourhood|suburb|quarter)$"];
+  way({BBOX})["boundary"~"^(neighborhood|neighbourhood|place)$"];
 );
 out geom;"""
+VERSION = 2  # bump to make the daily job download boundaries again
 
 ALIASES = {
     "clifton heights": "CUF", "university heights": "CUF", "fairview": "CUF", "cuf": "CUF",
@@ -39,7 +44,7 @@ ALIASES = {
     "central business district riverfront": "Downtown",
     "fay apartments": "Villages at Roll Hill", "roll hill": "Villages at Roll Hill",
     "villages of roll hill": "Villages at Roll Hill", "the villages at roll hill": "Villages at Roll Hill",
-    "otr": "Over-the-Rhine",
+    "otr": "Over-the-Rhine", "the heights": "CUF", "heights": "CUF",
 }
 
 
@@ -122,10 +127,14 @@ def simplify(points, tol=0.00012):
 def to_features(osm):
     shapes = {}
     for el in osm.get("elements", []):
-        if el.get("type") != "relation":
-            continue
         name = match(el.get("tags", {}).get("name"))
-        if not name:
+        if not name or el.get("type") not in ("relation", "way"):
+            continue
+        if el["type"] == "way":
+            ring = [[round(p["lon"], 5), round(p["lat"], 5)] for p in el.get("geometry", [])]
+            if len(ring) >= 4 and ring[0] == ring[-1] and not any(
+                    poly[0][0] == ring[0] for poly in shapes.get(name, [])):
+                shapes.setdefault(name, []).append([simplify(ring)])
             continue
         outer = [[[round(p["lon"], 5), round(p["lat"], 5)] for p in m["geometry"]]
                  for m in el.get("members", []) if m.get("type") == "way" and m.get("role") in ("outer", "")
@@ -156,8 +165,15 @@ def main():
     ap.add_argument("--from-file", help="use a saved Overpass JSON response (testing)")
     args = ap.parse_args()
     if os.path.exists(OUT) and not args.refresh and not args.from_file:
-        print("Neighborhood boundaries already present; skipping download.")
-        return
+        try:
+            with open(OUT) as f:
+                saved = json.load(f)
+        except ValueError:
+            saved = {}
+        if saved.get("version") == VERSION:
+            print(f"Neighborhood boundaries already present ({len(saved.get('features', []))} areas); skipping download.")
+            return
+        print("Saved boundaries are from an older version of this script; downloading again.")
     if args.from_file:
         with open(args.from_file) as f:
             osm = json.load(f)
@@ -171,13 +187,13 @@ def main():
     found = {f["properties"]["name"] for f in feats}
     missing = [h for h in HOOD_RX if h not in found]
     unmatched = sorted({el.get("tags", {}).get("name", "?") for el in osm.get("elements", [])
-                        if el.get("type") == "relation" and not match(el.get("tags", {}).get("name"))})
+                        if el.get("type") in ("relation", "way") and not match(el.get("tags", {}).get("name"))})
     if not feats:
         print("::warning::No neighborhood boundaries matched; the map will show a list instead.")
         return
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w") as f:
-        json.dump({"type": "FeatureCollection", "attribution": "© OpenStreetMap contributors (ODbL)",
+        json.dump({"type": "FeatureCollection", "version": VERSION, "attribution": "© OpenStreetMap contributors (ODbL)",
                    "features": feats}, f, separators=(",", ":"))
     print(f"Saved {len(feats)} of {len(HOOD_RX)} neighborhoods ({os.path.getsize(OUT) // 1024} KB).")
     if missing:
