@@ -162,6 +162,7 @@
     } catch (e) {
       console.error(e);
       $("res-h").textContent = "Search error";
+      $("spark").hidden = true;
       renderNothing("That search could not run. Try removing punctuation, or reload the page. (" + esc(e.message || e) + ")");
     } finally {
       $("results").classList.remove("busy");
@@ -239,7 +240,9 @@
 
   // A daily update replaces the database file. A page opened before the update has cached
   // pieces of the old file, and mixing them with the new one looks like a damaged database.
-  const isStale = (e) => /malformed|disk image|not a database|file is not/i.test(String(e && e.message || e));
+  // Also covers fetch failures ("doXHR failed", "Couldn't load", HTTP 404/416): the old page
+  // asked for a piece of the file that changed size or moved in the new version.
+  const isStale = (e) => /malformed|disk image|not a database|file is not|xhr|couldn.t load|status: ?4\d\d|range/i.test(String(e && e.message || e));
   async function reconnect() {
     dbPromise = null;
     try { const r = await fetch("data/stats.json", { cache: "no-cache" }); if (r.ok) stats = await r.json(); } catch (e) { /* keep old stats */ }
