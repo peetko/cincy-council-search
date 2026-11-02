@@ -891,7 +891,7 @@
 
   // ------------------------------------------------------------- analysis (loaded when scrolled into view)
   let analysis = null, analysisLoading = null;
-  const an = { span: "years", metric: "ordinances", stuckWhere: "", stuckShown: 6, lobbyShown: 12 };
+  const an = { span: "years", metric: "ordinances", stuckWhere: "", stuckShown: 6, lobbyShown: 12, lobbySort: "mentions", lobbyDir: "desc" };
   const METRICS = [
     { key: "ordinances", label: "Ordinances passed", go: { kind: "ordinance", body: "@council", outcome: "passed" }, noun: "ordinances passed" },
     { key: "resolutions", label: "Resolutions adopted", go: { kind: "resolution", body: "@council", outcome: "passed" }, noun: "resolutions adopted" },
@@ -900,6 +900,17 @@
     { key: "emergency_share", label: "Emergency share", go: { kind: "ordinance", body: "@council", outcome: "passed" }, noun: "of ordinances passed as emergencies", pct: true, tip: "an_emergency_share" },
     { key: "meetings", label: "Meetings", go: {}, noun: "meetings of Council and its committees" },
   ];
+  // Diverging scale for the topic grid: red (below the topic's usual pace) – gray – blue (above).
+  const DIVERGING = [
+    { max: -0.75, bg: "#b8302f", fg: "#fff", label: "Under 60% of usual" },
+    { max: -0.4, bg: "#ef8f8e", fg: "#0d1b3a", label: "60–75% of usual" },
+    { max: -0.15, bg: "#fbdcdb", fg: "#0d1b3a", label: "75–90% of usual" },
+    { max: 0.15, bg: "#f1f2f5", fg: "#0d1b3a", label: "About usual" },
+    { max: 0.4, bg: "#d6e5fa", fg: "#0d1b3a", label: "10–30% above usual" },
+    { max: 0.75, bg: "#7fb0ee", fg: "#0d1b3a", label: "30–70% above usual" },
+    { max: Infinity, bg: "#1c5cab", fg: "#fff", label: "70%+ above usual" },
+  ];
+  const divergingStep = (ratio) => { const l = Math.log2(Math.max(ratio, 1e-6)); return DIVERGING.find((d) => l < d.max) || DIVERGING[DIVERGING.length - 1]; };
   const plural = (n, one, many) => `${n.toLocaleString()} ${n === 1 ? one : (many || one + "s")}`;
   const dayWord = (n) => n === 0 ? "same day" : plural(Math.round(n), "day");
   const goAttr = (o) => `data-go='${esc(JSON.stringify(o))}'`;
@@ -957,23 +968,28 @@
       <div class="plotwrap"><div class="plot lt-plot"><div class="inner">${grid}<div class="cols">${cols}</div></div></div>
       <div class="xlabels">${periods.map((p) => `<span>${esc(p.label.replace(" (partial)", ""))}${p.partial ? "<small>partial</small>" : ""}</span>`).join("")}</div></div></div>`;
 
-    // Topic grid: shade each cell by items per month, compared within the topic's own row.
+    // Topic grid: color each cell by how far that period's pace (items per month) is above or
+    // below the topic's own average: blue = busier than usual, red = quieter, gray = about usual.
     const series = t[an.span === "years" ? "topics_by_year" : "topics_by_term"];
     const rows = Object.entries(series).map(([name, counts]) => ({ name, counts, total: counts.reduce((a, b) => a + b, 0) }))
       .filter((r) => r.total > 0).sort((a, b) => b.total - a.total);
     const head = `<thead><tr><th scope="col">Topic</th>${periods.map((p) => `<th scope="col" class="num">${esc(p.label.replace(" (partial)", ""))}${p.partial ? "*" : ""}</th>`).join("")}</tr></thead>`;
     const body = rows.map((r) => {
       const rates = r.counts.map((c, i) => c / Math.max(1, periods[i].days));
-      const max = Math.max(...rates) || 1;
+      const avg = rates.reduce((a, b) => a + b, 0) / rates.length || 1;
       return `<tr><th scope="row">${esc(r.name)}</th>${r.counts.map((c, i) => {
-        const level = c ? Math.min(SEQ.length - 1, Math.floor((rates[i] / max) * SEQ.length - 0.0001)) : -1;
+        const ratio = rates[i] / avg;
+        const step = divergingStep(ratio);
         const p = periods[i], label = p.label.replace(" (partial)", "");
-        const style = level < 0 ? "" : `background:${SEQ[level]};${level >= 3 ? "color:#fff;" : ""}`;
-        return `<td class="num"><button type="button" class="cell" style="${style}" ${goAttr({ topic: r.name, from: p.start, to: p.end, label })}
-          aria-label="${esc(r.name)}, ${esc(label)}: ${c} items. Show them." title="${esc(r.name)}, ${esc(label)}: ${c} item${c === 1 ? "" : "s"}">${c}</button></td>`;
+        const pct = Math.round((ratio - 1) * 100);
+        const how = Math.abs(pct) < 10 ? "about its usual pace" : `${Math.abs(pct)}% ${pct > 0 ? "busier" : "quieter"} than usual`;
+        return `<td class="num"><button type="button" class="cell" style="background:${step.bg};color:${step.fg}" ${goAttr({ topic: r.name, from: p.start, to: p.end, label })}
+          aria-label="${esc(r.name)}, ${esc(label)}: ${c} items, ${how}. Show them." data-tip-title="${esc(r.name)}, ${esc(label)}${p.partial ? " (partial)" : ""}"
+          data-tip-text="${esc(`${c} item${c === 1 ? "" : "s"}: ${how} for this topic, comparing items per month. Click to see them.`)}">${c}</button></td>`;
       }).join("")}</tr>`;
     }).join("");
     $("topic-grid").innerHTML = head + `<tbody>${body}</tbody>`;
+    $("grid-legend").innerHTML = `<span>Quieter than usual</span>${DIVERGING.map((d) => `<i style="background:${d.bg}" title="${esc(d.label)}"></i>`).join("")}<span>Busier than usual</span>`;
   }
 
   // ---- How long legislation takes
@@ -999,7 +1015,7 @@
     const ymax = Math.max(1, ...years.map(([, s]) => s.median));
     $("timing-years").innerHTML = years.length ? `<span class="t lab" style="font-size:14px">Typical days to a final vote, by year of the vote</span>
       <span class="year-cols">${years.map(([y, s]) => `<span class="yc" tabindex="0" data-tip-title="${y}" data-tip-text="${esc(`Median ${dayWord(s.median)} across ${s.n} items that got a final vote in ${y}; the middle half took ${s.p25}–${s.p75} days.`)}">
-        <em>${Math.round(s.median)}</em><span style="height:${(s.median / ymax) * 100}%"></span><small>${y}</small></span>`).join("")}</span>` : "";
+        <em>${Math.round(s.median)}</em><span style="height:calc((100% - 20px) * ${(s.median / ymax).toFixed(3)})"></span><small>${y}</small></span>`).join("")}</span>` : "";
   }
 
   // ---- Items that seem stuck
@@ -1031,12 +1047,27 @@
     const l = analysis.lobbying;
     if (!l || !l.registrations) return;
     $("lobbying").hidden = false;
-    $("lobby-sub").textContent = `${plural(l.registrations, "lobbyist registration")} filed with the Clerk since July 2020, for ${plural(l.clients_total, "client")}. Clients are sorted by how many later agenda items name them.`;
+    $("lobby-sub").textContent = `${plural(l.registrations, "lobbyist registration")} filed with the Clerk since July 2020, for ${plural(l.clients_total, "client")}. Click a column heading to sort.`;
     const years = Object.entries(l.per_year || {});
     const max = Math.max(1, ...years.map(([, n]) => n));
     $("lobby-years").setAttribute("aria-label", "Registrations per year: " + years.map(([y, n]) => `${y}: ${n}`).join(", "));
     $("lobby-years").innerHTML = `<span class="mb-title">Registrations per year</span><span class="mb-bars">${years.map(([y, n]) => `<span class="mb" data-tip-title="${y}" data-tip-text="${plural(n, "registration")}" tabindex="0"><span style="height:${(n / max) * 100}%"></span><small>${y.slice(2)}</small></span>`).join("")}</span>`;
-    $("lobby-rows").innerHTML = l.clients.slice(0, an.lobbyShown).map((c) => {
+    // Sorting: text columns A→Z first, number and date columns biggest/newest first.
+    const SORTS = {
+      client: (c) => c.client.toLowerCase().replace(/^the /, ""), agents: (c) => (c.agents.length ? c.agents.length : -1),
+      registrations: (c) => c.registrations, mentions: (c) => c.mentions, recent: (c) => (c.recent[0] ? c.recent[0].date : ""),
+    };
+    const key = SORTS[an.lobbySort], dir = an.lobbyDir === "asc" ? 1 : -1;
+    const sorted = l.clients.slice().sort((a, b) => {
+      const x = key(a), y = key(b);
+      return (x < y ? -1 : x > y ? 1 : 0) * dir || b.mentions - a.mentions || a.client.localeCompare(b.client);
+    });
+    document.querySelectorAll("#lobbying th[data-sort-col]").forEach((th) => {
+      const on = th.dataset.sortCol === an.lobbySort;
+      th.setAttribute("aria-sort", on ? (an.lobbyDir === "asc" ? "ascending" : "descending") : "none");
+      th.classList.toggle("sorted", on);
+    });
+    $("lobby-rows").innerHTML = sorted.slice(0, an.lobbyShown).map((c) => {
       const r = c.recent[0];
       return `<tr><th scope="row">${esc(c.client)}</th>
         <td>${esc(c.agents.join(", ")) || "<span class='muted'>not parsed</span>"}</td>
@@ -1078,6 +1109,14 @@
       if (mt) { an.metric = mt.dataset.metric; renderLongTrends(); $("metric-chips").querySelector(`[data-metric="${an.metric}"]`).focus(); return; }
       const sw = e.target.closest("[data-stuck-where]");
       if (sw) { an.stuckWhere = sw.dataset.stuckWhere; an.stuckShown = 6; renderStuck(); return; }
+      const ls = e.target.closest("[data-lobby-sort]");
+      if (ls) {
+        const k = ls.dataset.lobbySort;
+        if (an.lobbySort === k) an.lobbyDir = an.lobbyDir === "asc" ? "desc" : "asc";
+        else { an.lobbySort = k; an.lobbyDir = k === "client" ? "asc" : "desc"; }
+        renderLobbying();
+        return;
+      }
     });
     $("stuck-more").addEventListener("click", () => { an.stuckShown += 20; renderStuck(); });
     $("lobby-more").addEventListener("click", () => { an.lobbyShown += 25; renderLobbying(); });

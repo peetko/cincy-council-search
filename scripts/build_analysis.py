@@ -106,10 +106,10 @@ def timing(con, today):
 
 
 # ---------------------------------------------------------------- 2. lobbying
-AGENT_RX = re.compile(r"Legislative Agents?\s*[:,]?\s*(.+?)(?:,|\.\s|\(|$)", re.I)
+AGENT_RX = re.compile(r"Legislative Agents?\s*[:,]?\s*([^,(]+)", re.I)
 PAREN_RX = re.compile(r"\(([^()]{2,160})\)")
 NOT_CLIENT = re.compile(r"^\s*(termination|terminated|amended|amendment|renewal|renewed|revised|corrected|update[d]?|"
-                        r"emergency|\d+|[a-z]|see attached|attached)\s*$", re.I)
+                        r"emergency|\d+|[a-z]|see attached|attached|[a-z] version|substitute|as amended)\s*$", re.I)
 
 
 def client_of(title):
@@ -119,25 +119,81 @@ def client_of(title):
         return groups[-1]
     m = re.search(r"\(([^()]{3,160})$", (title or "").strip())  # closing parenthesis missing
     return m.group(1).strip(" .") if m and not NOT_CLIENT.match(m.group(1)) else None
-CORP_WORDS = re.compile(r"\b(the|inc|incorporated|llc|l\.l\.c|llp|co|company|corp|corporation|ltd|lp|pllc|na|n\.a)\b\.?", re.I)
+
+
+CORP_WORDS = re.compile(r"\b(inc|incorporated|llc|l\.l\.c|llp|co|company|corp|corporation|ltd|lp|pllc|na|n\.a)\b\.?", re.I)
 GENERIC = {"city", "cincinnati", "ohio", "county", "state", "group", "association", "foundation", "services",
            "partners", "holdings", "development", "properties", "council", "public", "affairs", "consulting"}
+# Capitalization for names that arrive in ALL CAPS ("FC CINCINNATI" -> "FC Cincinnati", "3CDC" stays "3CDC").
+SMALL_WORDS = {"of", "the", "and", "for", "in", "at", "on", "to", "a", "an", "by", "or", "de", "la", "du"}
+ACRONYMS = {"YMCA", "YWCA", "USA", "OTR", "CBA", "AFL", "CIO", "IBEW", "SEIU", "AFSCME", "NAACP", "UC", "NKU", "DAAP",
+            "CVG", "PNC", "CVS", "TQL", "GE", "P&G", "AT&T", "HCDC", "REDI", "SORTA", "TANK", "OKI", "CPS", "CMHA",
+            "FOP", "IAFF", "ULI", "NAIOP", "AIA", "MSD", "GCWW", "ODOT", "LISC", "CDC", "FC", "ACLU", "LGBTQ", "AARP",
+            "HUD", "UAW", "CEO", "LLC", "BRT", "CNG", "ECDI", "MORTAR", "CUF", "CHCURC", "NAMI", "UCMC", "CCHMC", "OTRCH"}
+ACRONYMS.discard("MORTAR")
 
 
-def client_key(name):
-    core = CORP_WORDS.sub(" ", name)
-    core = re.sub(r"[^A-Za-z0-9&' ]+", " ", core)
-    return re.sub(r"\s+", " ", core).strip()
+def _word(w, first):
+    core = re.sub(r"[^A-Za-z0-9&]", "", w)
+    if not core:
+        return w
+    if any(ch.isdigit() for ch in core) or core in ACRONYMS:
+        return w.upper()
+    if not first and core.lower() in SMALL_WORDS:
+        return w.lower()
+    if len(core) <= 2 or (len(core) <= 5 and not re.search(r"[AEIOUY]", core)):
+        return w.upper()  # FC, UC, PNC, CVG
+    out = w[0].upper() + w[1:].lower()
+    return re.sub(r"(?<=\b[OoDd]')([a-z])|(?<=^Mc)([a-z])", lambda m: m.group(0).upper(), out)  # O'Neill, McDonald
 
 
 def nice(name):
-    return name if any(c.islower() for c in name) else name.title().replace("'S ", "'s ")
+    """Readable capitalization for ALL-CAPS names; names already in mixed case are left alone."""
+    name = re.sub(r"\s+", " ", name).strip(" ,.;")
+    if any(ch.islower() for ch in name):
+        return name
+    words = name.split(" ")
+    return " ".join("-".join(_word(part, i == 0 and j == 0) for j, part in enumerate(w.split("-")))
+                    for i, w in enumerate(words))
+
+
+def client_name(raw):
+    core = CORP_WORDS.sub(" ", raw)
+    core = re.sub(r"[^A-Za-z0-9&'. \-]+", " ", core)
+    return nice(re.sub(r"\s+", " ", core))
+
+
+def client_key(name):
+    return re.sub(r"^the ", "", re.sub(r"[^a-z0-9& ]+", "", name.lower())).strip()
+
+
+SUFFIX = re.compile(r"\b(jr|sr|ii|iii|iv|esq)\b\.?", re.I)
+
+
+def agent_name(raw):
+    name = re.sub(r"\s+", " ", raw).strip(" .;:")
+    name = re.sub(r"^(mr|ms|mrs|dr)\.?\s+", "", name, flags=re.I)
+    return nice(name) if 2 <= len(name) <= 60 else None
+
+
+def agent_key(name):
+    parts = SUFFIX.sub("", name).replace(".", " ").split()
+    return (parts[0][0].lower(), parts[-1].lower()) if len(parts) >= 2 else (name.lower(), "")
+
+
+def merge_agents(names):
+    """'Doug Moormann' / 'Douglas Moormann' and 'Charles Gerhardt' / 'Charles H. Gerhardt III' -> one person each,
+    shown with the most-used spelling (the longest on a tie)."""
+    groups = collections.defaultdict(collections.Counter)
+    for n in names:
+        groups[agent_key(n)][n] += 1
+    return sorted(max(c.items(), key=lambda kv: (kv[1], len(kv[0])))[0] for c in groups.values())
 
 
 def lobbying(con, today):
     regs = con.execute("""
         SELECT item_id, date, title FROM items
-        WHERE matter_type LIKE 'Registration%' OR title LIKE 'REGISTRATION%' OR title LIKE '%Legislative Agent%'
+        WHERE matter_type LIKE 'Registration%' OR title LIKE 'REGISTRATION%'
         ORDER BY date""").fetchall()
     clients, parsed, per_year = {}, 0, collections.Counter()
     for r in regs:
@@ -148,24 +204,28 @@ def lobbying(con, today):
         if not raw:
             continue
         parsed += 1
-        key = client_key(raw).lower()
+        name = client_name(raw)
+        key = client_key(name)
         if len(key) < 3 or key in GENERIC:
             continue
-        c = clients.setdefault(key, {"name": nice(client_key(raw)), "agents": set(), "registrations": [], "key": key})
-        if m_agent:
-            c["agents"].add(m_agent.group(1).strip())
+        c = clients.setdefault(key, {"names": collections.Counter(), "agents": [], "registrations": [], "key": key})
+        c["names"][name] += 1
+        agent = agent_name(m_agent.group(1)) if m_agent else None
+        if agent:
+            c["agents"].append(agent)
         c["registrations"].append(r["date"])
 
-    out = []
+    out, all_agents = [], []
     for key, c in clients.items():
+        name = max(c["names"].items(), key=lambda kv: (kv[1], len(kv[0])))[0]
         first = min(c["registrations"])
-        phrase = '"' + c["name"].replace('"', "") + '"'
+        phrase = '"' + re.sub(r"[^\w&' ]+", " ", name).strip() + '"'
         try:
             hits = con.execute("""
                 SELECT i.item_id, i.date, i.matter_file, i.title, i.outcome, i.body FROM items_fts
                 JOIN items i ON i.item_id = items_fts.rowid
                 WHERE items_fts MATCH ? AND i.date >= ? AND i.title NOT LIKE 'REGISTRATION%'
-                  AND COALESCE(i.matter_type, '') NOT LIKE 'Registration%' AND i.title NOT LIKE '%Legislative Agent%'
+                  AND COALESCE(i.matter_type, '') NOT LIKE 'Registration%'
                 ORDER BY i.date DESC""", (phrase, first)).fetchall()
         except Exception:
             hits = []
@@ -175,20 +235,17 @@ def lobbying(con, today):
             if k not in seen:
                 seen.add(k)
                 uniq.append(h)
-        hits = uniq
-        out.append({"client": c["name"], "query": phrase, "agents": sorted(c["agents"])[:6],
+        agents = merge_agents(c["agents"])
+        all_agents += agents
+        out.append({"client": name, "query": phrase, "agents": agents[:8],
                     "registrations": len(c["registrations"]), "first": first, "last": max(c["registrations"]),
-                    "mentions": len(hits),
+                    "mentions": len(uniq),
                     "recent": [{"date": h["date"], "file": h["matter_file"], "title": short(h["title"], 140),
-                                "outcome": h["outcome"], "body": h["body"]} for h in hits[:3]]})
+                                "outcome": h["outcome"], "body": h["body"]} for h in uniq[:3]]})
     out.sort(key=lambda c: (-c["mentions"], c["client"]))
-    agents = collections.Counter()
-    for c in clients.values():
-        for a in c["agents"]:
-            agents[a] += 1
     return {"registrations": len(regs), "parsed": parsed, "clients_total": len(out),
-            "per_year": dict(sorted(per_year.items())), "top_agents": agents.most_common(10),
-            "clients": out[:150]}
+            "per_year": dict(sorted(per_year.items())),
+            "top_agents": collections.Counter(all_agents).most_common(10), "clients": out}
 
 
 # ---------------------------------------------------------------- 3. committees

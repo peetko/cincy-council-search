@@ -274,6 +274,7 @@
       <div class="lt-topics">
         <span class="t lab" style="font-size:15px">Topics over time<button type="button" class="tip" data-tip="an_topic_grid" aria-label="About this table">i</button></span>
         <div class="tablebox"><table class="grid-table" id="topic-grid"></table></div>
+        <div class="legend grid-legend" id="grid-legend" aria-hidden="true"></div>
       </div>
     </figure>
 
@@ -310,11 +311,11 @@
       <div class="tablebox">
         <table class="lobby-table">
           <thead><tr>
-            <th scope="col">Client</th>
-            <th scope="col">Registered lobbyists</th>
-            <th scope="col" class="num">Registrations</th>
-            <th scope="col" class="num"><span class="lab end">Later legislation naming client<button type="button" class="tip" data-tip="an_lobby_mentions" aria-label="About this column">i</button></span></th>
-            <th scope="col">Most recent of those</th>
+            <th scope="col" data-sort-col="client"><button type="button" class="sort-btn" data-lobby-sort="client">Client</button></th>
+            <th scope="col" data-sort-col="agents"><button type="button" class="sort-btn" data-lobby-sort="agents">Registered lobbyists</button></th>
+            <th scope="col" class="num" data-sort-col="registrations"><button type="button" class="sort-btn" data-lobby-sort="registrations">Registrations</button></th>
+            <th scope="col" class="num" data-sort-col="mentions"><span class="lab end"><button type="button" class="sort-btn" data-lobby-sort="mentions">Later legislation naming client</button><button type="button" class="tip" data-tip="an_lobby_mentions" aria-label="About this column">i</button></span></th>
+            <th scope="col" data-sort-col="recent"><button type="button" class="sort-btn" data-lobby-sort="recent">Most recent of those</button></th>
           </tr></thead>
           <tbody id="lobby-rows"></tbody>
         </table>
