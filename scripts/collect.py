@@ -14,7 +14,7 @@ import datetime as dt
 import sys
 
 import legistar
-from common import (DEFAULT_DB, DEPT_RX, SETTINGS, TOPIC_RX, classify_kind, connect, finalize,
+from common import (DEFAULT_DB, DEPT_RX, HOOD_RX, SETTINGS, TOPIC_RX, classify_kind, connect, finalize,
                     get_meta, is_noise, parse_sponsors, rebuild_search_index, rx, set_meta, tag, vote_value)
 
 INCLUDE_BODIES = rx(SETTINGS["include_bodies_regex"])
@@ -190,6 +190,23 @@ def is_final_vote(is_council, passed, action):
                  and not NOT_FINAL_RX.search(action or "")) else 0
 
 
+def save_office_records(con):
+    """Committee memberships and roles (Chair, Vice Chair, Member) from Legistar's office records."""
+    try:
+        rows = list(legistar.get_all("officerecords", {
+            "$filter": f"OfficeRecordEndDate ge {legistar.odata_date(SETTINGS['start_date'])}"}))
+    except RuntimeError as e:
+        print(f"Could not download office records (committee memberships): {e}")
+        return
+    con.execute("DELETE FROM office_records")
+    for r in rows:
+        con.execute("INSERT OR REPLACE INTO office_records VALUES(?,?,?,?,?,?)", (
+            r.get("OfficeRecordId"), clean(r.get("OfficeRecordFullName")), clean(r.get("OfficeRecordBodyName")),
+            clean(r.get("OfficeRecordTitle")), (r.get("OfficeRecordStartDate") or "")[:10],
+            (r.get("OfficeRecordEndDate") or "")[:10]))
+    print(f"Saved {len(rows)} office records (committee memberships).")
+
+
 def retag(con):
     """Re-apply everything that depends on config/ files, so edits take effect on old items too."""
     noise = [r[0] for r in con.execute("SELECT item_id, title, matter_id, action, matter_file FROM items")
@@ -211,8 +228,8 @@ def retag(con):
     for r in rows:
         text = " ".join(x or "" for x in (r["title"], r["matter_name"], r["agenda_note"],
                                          r["minutes_note"], r["action_text"]))
-        con.execute("UPDATE items SET topics=?, departments=?, sponsors=?, kind=?, is_final=? WHERE item_id=?",
-                    ("; ".join(tag(text, TOPIC_RX)), "; ".join(tag(text, DEPT_RX)),
+        con.execute("UPDATE items SET topics=?, departments=?, neighborhoods=?, sponsors=?, kind=?, is_final=? WHERE item_id=?",
+                    ("; ".join(tag(text, TOPIC_RX)), "; ".join(tag(text, DEPT_RX)), "; ".join(tag(text, HOOD_RX)),
                      parse_sponsors(r["title"]), classify_kind(r["matter_type"], r["title"]),
                      is_final_vote(r["is_council"], r["passed"], r["action"]), r["item_id"]))
     print(f"Re-tagged {len(rows)} items.")
@@ -270,6 +287,7 @@ def main():
             print(f"  {n}/{len(todo)} meetings · {stats['items']} items · {stats['vote_lists']} vote lists "
                   f"· {legistar.request_count} API requests", flush=True)
 
+    save_office_records(con)
     retag(con)  # re-apply topic/department lists in case they were edited
     rebuild_search_index(con)
     set_meta(con, "last_sync", started.isoformat())

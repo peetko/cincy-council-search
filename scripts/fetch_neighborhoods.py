@@ -1,0 +1,190 @@
+"""Download Cincinnati neighborhood boundaries for the map (site/data/neighborhoods.geojson).
+
+    python scripts/fetch_neighborhoods.py            # only if the file is missing
+    python scripts/fetch_neighborhoods.py --refresh  # download again
+
+Boundaries come from OpenStreetMap (© OpenStreetMap contributors, ODbL), via the free
+Overpass query service. Neighborhoods are mapped there as boundary relations made of
+many border segments ("ways"); this script stitches the segments into closed outlines,
+simplifies them so the file stays small, and keeps only names that match the City's list
+in config/neighborhoods.json. Boundaries rarely change, so the daily job reuses the saved
+file instead of downloading it every day.
+"""
+import argparse
+import json
+import os
+import re
+import sys
+import time
+import urllib.parse
+import urllib.request
+
+from common import HOOD_RX, ROOT
+
+OUT = os.path.join(ROOT, "site", "data", "neighborhoods.geojson")
+ENDPOINTS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"]
+BBOX = "39.04,-84.72,39.23,-84.36"  # south, west, north, east around Cincinnati
+QUERY = f"""[out:json][timeout:180];
+(
+  rel({BBOX})["boundary"="administrative"]["admin_level"~"^(9|10|11)$"];
+  rel({BBOX})["place"~"^(neighbourhood|suburb|quarter)$"];
+  rel({BBOX})["boundary"~"^(neighborhood|neighbourhood|place)$"];
+);
+out geom;"""
+
+ALIASES = {
+    "clifton heights": "CUF", "university heights": "CUF", "fairview": "CUF", "cuf": "CUF",
+    "clifton heights university heights fairview": "CUF",
+    "central business district": "Downtown", "cbd": "Downtown", "downtown": "Downtown",
+    "central business district riverfront": "Downtown",
+    "fay apartments": "Villages at Roll Hill", "roll hill": "Villages at Roll Hill",
+    "villages of roll hill": "Villages at Roll Hill", "the villages at roll hill": "Villages at Roll Hill",
+    "otr": "Over-the-Rhine",
+}
+
+
+def norm(name):
+    n = name.lower().replace("&", " and ")
+    n = re.sub(r"\bmount\b", "mt", n)
+    n = re.sub(r"[^a-z0-9 ]+", " ", n)
+    n = re.sub(r"\s+", " ", n).strip()
+    return re.sub(r"^the ", "", n)
+
+
+CANON = {norm(h): h for h in HOOD_RX}
+CANON.update({norm(k): v for k, v in ALIASES.items()})
+
+
+def match(name):
+    return CANON.get(norm(name or ""))
+
+
+def stitch(segments):
+    """Join way segments (lists of [lon, lat]) into closed rings."""
+    segs = [list(s) for s in segments if len(s) >= 2]
+    rings = []
+    while segs:
+        ring = segs.pop(0)
+        changed = True
+        while ring[0] != ring[-1] and changed:
+            changed = False
+            for i, s in enumerate(segs):
+                if s[0] == ring[-1]:
+                    ring += s[1:]
+                elif s[-1] == ring[-1]:
+                    ring += s[::-1][1:]
+                elif s[-1] == ring[0]:
+                    ring = s[:-1] + ring
+                elif s[0] == ring[0]:
+                    ring = s[::-1][:-1] + ring
+                else:
+                    continue
+                segs.pop(i)
+                changed = True
+                break
+        if ring[0] != ring[-1]:
+            ring.append(ring[0])  # close small gaps rather than drop the shape
+        if len(ring) >= 4:
+            rings.append(ring)
+    return rings
+
+
+def simplify(points, tol=0.00012):
+    """Douglas-Peucker line simplification (tolerance in degrees, ~12 m)."""
+    if len(points) < 4:
+        return points
+
+    def dist(p, a, b):
+        if a == b:
+            return ((p[0] - a[0]) ** 2 + (p[1] - a[1]) ** 2) ** 0.5
+        t = ((p[0] - a[0]) * (b[0] - a[0]) + (p[1] - a[1]) * (b[1] - a[1])) / ((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2)
+        t = max(0, min(1, t))
+        x, y = a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])
+        return ((p[0] - x) ** 2 + (p[1] - y) ** 2) ** 0.5
+
+    keep = [False] * len(points)
+    keep[0] = keep[-1] = True
+    stack = [(0, len(points) - 1)]
+    while stack:
+        i, j = stack.pop()
+        best, idx = 0, None
+        for k in range(i + 1, j):
+            d = dist(points[k], points[i], points[j])
+            if d > best:
+                best, idx = d, k
+        if idx is not None and best > tol:
+            keep[idx] = True
+            stack += [(i, idx), (idx, j)]
+    out = [p for p, k in zip(points, keep) if k]
+    return out if len(out) >= 4 else points
+
+
+def to_features(osm):
+    shapes = {}
+    for el in osm.get("elements", []):
+        if el.get("type") != "relation":
+            continue
+        name = match(el.get("tags", {}).get("name"))
+        if not name:
+            continue
+        outer = [[[round(p["lon"], 5), round(p["lat"], 5)] for p in m["geometry"]]
+                 for m in el.get("members", []) if m.get("type") == "way" and m.get("role") in ("outer", "")
+                 and m.get("geometry")]
+        for ring in stitch(outer):
+            shapes.setdefault(name, []).append([simplify(ring)])
+    return [{"type": "Feature", "properties": {"name": n},
+             "geometry": {"type": "MultiPolygon", "coordinates": polys}} for n, polys in sorted(shapes.items())]
+
+
+def download():
+    body = urllib.parse.urlencode({"data": QUERY}).encode()
+    for url in ENDPOINTS:
+        for attempt in range(2):
+            try:
+                req = urllib.request.Request(url, data=body, headers={"User-Agent": "council-record (github.com)"})
+                with urllib.request.urlopen(req, timeout=240) as r:
+                    return json.loads(r.read().decode())
+            except Exception as e:  # network trouble: try again, then the next server
+                print(f"  {url} failed ({e}); retrying…")
+                time.sleep(10)
+    return None
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--refresh", action="store_true")
+    ap.add_argument("--from-file", help="use a saved Overpass JSON response (testing)")
+    args = ap.parse_args()
+    if os.path.exists(OUT) and not args.refresh and not args.from_file:
+        print("Neighborhood boundaries already present; skipping download.")
+        return
+    if args.from_file:
+        with open(args.from_file) as f:
+            osm = json.load(f)
+    else:
+        print("Downloading neighborhood boundaries from OpenStreetMap…")
+        osm = download()
+    if not osm:
+        print("::warning::Could not download neighborhood boundaries; the map will show a list instead.")
+        return
+    feats = to_features(osm)
+    found = {f["properties"]["name"] for f in feats}
+    missing = [h for h in HOOD_RX if h not in found]
+    unmatched = sorted({el.get("tags", {}).get("name", "?") for el in osm.get("elements", [])
+                        if el.get("type") == "relation" and not match(el.get("tags", {}).get("name"))})
+    if not feats:
+        print("::warning::No neighborhood boundaries matched; the map will show a list instead.")
+        return
+    os.makedirs(os.path.dirname(OUT), exist_ok=True)
+    with open(OUT, "w") as f:
+        json.dump({"type": "FeatureCollection", "attribution": "© OpenStreetMap contributors (ODbL)",
+                   "features": feats}, f, separators=(",", ":"))
+    print(f"Saved {len(feats)} of {len(HOOD_RX)} neighborhoods ({os.path.getsize(OUT) // 1024} KB).")
+    if missing:
+        print(f"Not found in OpenStreetMap: {', '.join(missing)}")
+    if unmatched:
+        print(f"OpenStreetMap areas not matched to a City neighborhood: {', '.join(unmatched[:40])}")
+
+
+if __name__ == "__main__":
+    sys.exit(main())

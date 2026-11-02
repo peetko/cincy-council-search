@@ -19,7 +19,10 @@ MEMBERS = [f"Member {c}" for c in "ABCDEFGHI"]
 BODIES = [("Cincinnati City Council", 2), ("Budget, Finance & Governance Committee", 0),
           ("Housing & Growth", 1), ("Climate, City Services & Infrastructure", 1)]
 SUBJECTS = [
-    ("affordable housing", "Community and Economic Development"),
+    ("affordable housing in Over-the-Rhine", "Community and Economic Development"),
+    ("a new playground in Westwood", "Cincinnati Parks"),
+    ("traffic calming in East Price Hill", "Transportation and Engineering"),
+    ("a development agreement in Madisonville", "Community and Economic Development"),
     ("the Cincinnati Streetcar", "Transportation and Engineering"),
     ("police recruit classes", "Police Department"),
     ("a tax abatement for a Kroger grocery store", "Community and Economic Development"),
@@ -35,6 +38,7 @@ SUBJECTS = [
 VERBS = ["AUTHORIZING", "ESTABLISHING", "MODIFYING", "APPROPRIATING funds for"]
 
 events, items, votes = [], {}, {}
+office_records = []
 
 
 def build():
@@ -134,6 +138,21 @@ def build():
         d += dt.timedelta(days=7)
 
 
+def build_offices():
+    rid = 1
+    for i, m in enumerate(MEMBERS):
+        office_records.append({"OfficeRecordId": rid, "OfficeRecordFullName": m, "OfficeRecordBodyName": "Cincinnati City Council",
+                               "OfficeRecordTitle": "Vice Mayor" if i == 0 else "Member", "OfficeRecordStartDate": "2024-01-02T00:00:00",
+                               "OfficeRecordEndDate": "2027-12-31T00:00:00"}); rid += 1
+        for j, (body, _) in enumerate(BODIES[1:]):
+            if (i + j) % 2 == 0:
+                office_records.append({"OfficeRecordId": rid, "OfficeRecordFullName": m, "OfficeRecordBodyName": body,
+                                       "OfficeRecordTitle": "Chair" if (i + j) % 6 == 0 else "Member",
+                                       "OfficeRecordStartDate": "2024-01-02T00:00:00", "OfficeRecordEndDate": "2027-12-31T00:00:00"}); rid += 1
+    office_records.append({"OfficeRecordId": rid, "OfficeRecordFullName": "Member A", "OfficeRecordBodyName": "Major Projects & Smart Government",
+                           "OfficeRecordTitle": "Chair", "OfficeRecordStartDate": "2020-01-02T00:00:00", "OfficeRecordEndDate": "2021-12-31T00:00:00"})
+
+
 def parse_filter(f):
     conds = re.findall(r"(EventDate|EventLastModifiedUtc) (ge|le) datetime'([^']+)'", f or "")
     def ok(ev):
@@ -168,6 +187,9 @@ class H(http.server.BaseHTTPRequestHandler):
             rows = [e for e in events if ok(e)]
             skip, top = int(q.get("$skip", 0)), int(q.get("$top", 1000))
             return self.send_json(rows[skip:skip + top])
+        if parts[2:] == ["officerecords"]:
+            skip, top = int(q.get("$skip", 0)), int(q.get("$top", 1000))
+            return self.send_json(office_records[skip:skip + top])
         if len(parts) == 5 and parts[2] == "events" and parts[4] == "eventitems":
             return self.send_json(items.get(int(parts[3]), []))
         if len(parts) == 5 and parts[2] == "eventitems" and parts[4] == "votes":
@@ -178,6 +200,7 @@ class H(http.server.BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     build()
+    build_offices()
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8799
     print(f"fake Legistar: {len(events)} events on :{port}", flush=True)
     http.server.ThreadingHTTPServer(("", port), H).serve_forever()

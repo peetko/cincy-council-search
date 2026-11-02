@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS items (
   sponsors       TEXT,
   departments    TEXT,
   topics         TEXT,
+  neighborhoods  TEXT,
   first_seen     TEXT,      -- when this run first saw the item (used for alerts)
   last_modified  TEXT
 );
@@ -88,6 +89,16 @@ CREATE INDEX IF NOT EXISTS items_event ON items(event_id);
 CREATE INDEX IF NOT EXISTS items_date ON items(date);
 CREATE INDEX IF NOT EXISTS items_first_seen ON items(first_seen);
 CREATE INDEX IF NOT EXISTS items_matter ON items(matter_id);
+
+-- Who sits on which body (Council, committees) and in what role, from Legistar.
+CREATE TABLE IF NOT EXISTS office_records (
+  record_id  INTEGER PRIMARY KEY,
+  person     TEXT,
+  body       TEXT,
+  title      TEXT,
+  start_date TEXT,
+  end_date   TEXT
+);
 
 CREATE TABLE IF NOT EXISTS votes (
   item_id   INTEGER,
@@ -117,6 +128,11 @@ def connect(path):
         # 4 KB pages: the website reads the file in 4 KB chunks.
         con.execute("PRAGMA page_size = 4096")
     con.executescript(SCHEMA)
+    # Columns added after the first release: add them to older databases.
+    have = {r[1] for r in con.execute("PRAGMA table_info(items)")}
+    for col in ("neighborhoods",):
+        if col not in have:
+            con.execute(f"ALTER TABLE items ADD COLUMN {col} TEXT")
     con.executescript(FTS_SCHEMA)
     return con
 
@@ -136,6 +152,7 @@ DROP TABLE IF EXISTS facets;
 DROP TABLE IF EXISTS body_names;
 DROP TABLE IF EXISTS dept_names;
 DROP TABLE IF EXISTS topic_names;
+DROP TABLE IF EXISTS hood_names;
 -- A slim copy of the columns used for filtering, counting and sorting. The website
 -- reads this instead of the full items table, so a search downloads only a small
 -- slice of the database file. Names are stored as short number codes (looked up in
@@ -143,6 +160,7 @@ DROP TABLE IF EXISTS topic_names;
 CREATE TABLE body_names (id INTEGER PRIMARY KEY, name TEXT UNIQUE);
 CREATE TABLE dept_names (id INTEGER PRIMARY KEY, name TEXT UNIQUE);
 CREATE TABLE topic_names (id INTEGER PRIMARY KEY, name TEXT UNIQUE);
+CREATE TABLE hood_names (id INTEGER PRIMARY KEY, name TEXT UNIQUE);
 CREATE TABLE facets (
   item_id     INTEGER PRIMARY KEY,
   event_id    INTEGER,
@@ -158,6 +176,7 @@ CREATE TABLE facets (
   mover       TEXT,
   dept_ids    TEXT,    -- like "|3|12|"
   topic_ids   TEXT,    -- like "|1|5|"
+  hood_ids    TEXT,    -- neighborhoods, like "|34|"
   dissent     TEXT     -- final-passage votes only: "Name|no; Name|abstain"
 );
 CREATE INDEX facets_date ON facets(date, is_council, seq);
@@ -172,6 +191,8 @@ def rebuild_search_index(con):
     con.executemany("INSERT INTO body_names(id, name) VALUES(?, ?)", list(enumerate(bodies, 1)))
     con.executemany("INSERT INTO dept_names(id, name) VALUES(?, ?)", list(enumerate(DEPT_RX, 1)))
     con.executemany("INSERT INTO topic_names(id, name) VALUES(?, ?)", list(enumerate(TOPIC_RX, 1)))
+    con.executemany("INSERT INTO hood_names(id, name) VALUES(?, ?)", list(enumerate(HOOD_RX, 1)))
+    hood_id = {h: i for i, h in enumerate(HOOD_RX, 1)}
     body_id = {b: i for i, b in enumerate(bodies, 1)}
     dept_id = {d: i for i, d in enumerate(DEPT_RX, 1)}
     topic_id = {t: i for i, t in enumerate(TOPIC_RX, 1)}
@@ -182,14 +203,16 @@ def rebuild_search_index(con):
 
     rows = con.execute("""
         SELECT i.item_id, i.event_id, i.matter_id, NULLIF(i.matter_file, ''), i.date, i.body, i.is_council,
-               i.kind, i.outcome_cat, i.seq, i.sponsors, i.mover, i.departments, i.topics,
+               i.kind, i.outcome_cat, i.seq, i.sponsors, i.mover, i.departments, i.topics, i.neighborhoods,
                CASE WHEN i.is_final = 1 THEN COALESCE((
                  SELECT group_concat(v.person || '|' || v.value, '; ') FROM votes v
                  WHERE v.item_id = i.item_id AND v.value IN ('no', 'abstain')), '') ELSE '' END
         FROM items i ORDER BY i.date, i.item_id""").fetchall()
-    con.executemany("INSERT INTO facets VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [
+    con.executemany("INSERT INTO facets(item_id, event_id, matter_id, matter_file, date, body_id, is_council, kind, "
+                    "outcome_cat, seq, sponsors, mover, dept_ids, topic_ids, hood_ids, dissent) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [
         (r[0], r[1], r[2], r[3], r[4], body_id.get(r[5]), r[6], r[7], r[8], r[9], r[10] or "", r[11] or "",
-         codes(r[12], dept_id), codes(r[13], topic_id), r[14]) for r in rows])
+         codes(r[12], dept_id), codes(r[13], topic_id), codes(r[14], hood_id), r[15]) for r in rows])
     con.execute("INSERT INTO items_fts(items_fts) VALUES('rebuild')")
 
 
@@ -205,6 +228,8 @@ def finalize(con):
 
 def _term_pattern(term):
     term = term.strip()
+    if term.startswith("re:"):
+        return "(?:" + term[3:] + ")"
     star = term.endswith("*")
     core = re.escape(term.rstrip("*")).replace(r"\ ", r"\s+")
     return r"\b" + core + (r"\w*" if star else r"\b")
@@ -217,6 +242,7 @@ def _compile_groups(groups):
 
 TOPIC_RX = _compile_groups(load_json("topics.json"))
 DEPT_RX = _compile_groups(load_json("departments.json"))
+HOOD_RX = _compile_groups(load_json("neighborhoods.json"))
 
 
 def tag(text, groups):

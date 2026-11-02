@@ -24,6 +24,9 @@ window.GLOSSARY = {
   recommended: ["Recommended by committee", "A committee voted to send the item to full Council, usually with a recommendation to pass. The final vote happens later at Council."],
   procedural: ["Procedural vote", "One of the extra roll calls an ordinance gets: suspending the three-readings rule (needs 7 votes) or keeping the emergency clause (needs 6). The vote that actually passes the ordinance is listed separately."],
   topic_filter: ["Topic", "Items are tagged with topics by matching keywords (editable in config/topics.json), so a topic search is a helpful guide rather than an exact list."],
+  hood_filter: ["Neighborhood", "Items whose text names a neighborhood, matched by keyword (editable in config/neighborhoods.json). Many items, like citywide budgets, name no neighborhood at all."],
+  chart_hoods: ["Neighborhoods", "How many pieces of legislation mention each of Cincinnati's neighborhoods (the City's 2020 statistical neighborhoods), matched by keyword. Darker means more. Items about the whole city don't name a neighborhood, so they aren't counted here."],
+  member_sponsored: ["Sponsorship", "Items at full Council that list this member as a sponsor (\u201csubmitted by\u201d) or that they moved, matched by last name in the agenda text."],
   scheduled: ["On an upcoming agenda", "Listed for a meeting that hasn't happened yet."],
 
   // ---- procedure

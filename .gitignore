@@ -5,6 +5,7 @@ site/data/*.db-journal
 site/data/stats.json
 site/data/db-info.json
 site/data/db/
+site/data/neighborhoods.geojson
 
 # Your private watch list for testing alerts locally. Never commit it.
 config/watchlist.local.json

@@ -5,6 +5,8 @@ A free, searchable record of Cincinnati City Council and committee meetings sinc
 - **Coming up at City Hall**: the next two weeks of Council and committee meetings; click one to see its agenda.
 - **Search** every agenda and minutes item, grouped into one card per piece of legislation with its history (committee → Council → final vote). Every card has a shareable link, a "copy citation" button, and any result list downloads as CSV. Search covers ordinances, resolutions, motions, communications. Filter by type, meeting body, sponsor, department, outcome and date. Each result links to the minutes or agenda PDF, the Legistar legislation page, and the roll-call votes.
 - **Running stats**: what's passed this year compared with last year, which topics are coming up more or less often (month, quarter or year), and how each member voted.
+- **Member pages**: click a name in "How members voted" for attendance, votes, no votes, committee roles and the topics they sponsor.
+- **Neighborhoods**: a map and ranked list of which of the City's 51 neighborhoods come up most; click one to see its items.
 - **Split votes**: Council votes are usually unanimous, so the site makes the exceptions easy to find. Filter to any split vote, or click a member's "No / abstain" count to see exactly what they opposed.
 - **Built-in explainers**: hover over or tap the ⓘ icons, item types and outcomes to learn how Council works: what an ordinance is, what "passed as an emergency" means, the three-readings rule, and more.
 - **Alerts**: emails when a watched phrase (e.g. "Kroger") appears on a newly posted agenda.
@@ -68,6 +70,7 @@ All the knobs are plain JSON files in `config/`. Edit them right on GitHub (penc
 |---|---|
 | `config/topics.json` | Topics for the "coming up more / less" chart, each defined by keywords. |
 | `config/departments.json` | Department names and the words that identify them, used for the Department filter. |
+| `config/neighborhoods.json` | The City's 2020 neighborhood list and the words that identify each one in agenda text. |
 | `config/settings.json` | Which meeting counts as full Council, which actions count as a final vote, how vote words (Yea/Nay/Absent…) map to yes/no/absent, and how far back to refresh. |
 
 Colors and fonts live at the top of `site/styles.css` (Cincinnati flag navy `#002673` and red `#C70F2E`). The tooltip explanations are in `site/glossary.js`, one line per term, so you can reword them without touching any code.
@@ -103,9 +106,12 @@ scripts/build_stats.py         compute site/data/stats.json
 scripts/alerts.py              email digests for watched terms
 scripts/report.py              data check
 scripts/split_db.py            cut the database into pieces the website can read
+scripts/fetch_neighborhoods.py neighborhood boundaries for the map (OpenStreetMap, downloaded once)
 scripts/serve.py               local preview server
 site/                          the website (index.html, styles.css, app.js, glossary.js, vendor/)
 tests/fake_legistar.py         a fake Legistar API used for testing
 ```
+
+Neighborhood boundaries © OpenStreetMap contributors (ODbL), fetched once by `scripts/fetch_neighborhoods.py`; delete `data/neighborhoods.geojson` from the site (or run it with `--refresh`) to update them.
 
 The in-browser SQLite library in `site/vendor/` is [sql.js-httpvfs](https://github.com/phiresky/sql.js-httpvfs) (Apache-2.0 license, included).

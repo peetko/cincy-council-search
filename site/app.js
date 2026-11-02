@@ -10,10 +10,11 @@
   "use strict";
 
   const PAGE = 20;
+  const pageSize = () => (!state.q.trim() && !anyFilter()) ? 10 : PAGE;
   const $ = (id) => document.getElementById(id);
-  const state = { q: "", kind: "", body: "", sponsor: "", dept: "", outcome: "", vote: "", topic: "", date: "", file: "", item: "", meeting: "", sort: "newest", offset: 0, period: "year" };
-  const FILTERS = ["kind", "body", "sponsor", "dept", "topic", "outcome", "vote", "date"];
-  const FOCUS = ["file", "item", "meeting"];  // set by links (a permalink or a meeting), not by dropdowns
+  const state = { q: "", kind: "", body: "", sponsor: "", dept: "", outcome: "", vote: "", topic: "", hood: "", date: "", file: "", item: "", meeting: "", member: "", sort: "newest", offset: 0, period: "year" };
+  const FILTERS = ["kind", "body", "sponsor", "dept", "topic", "hood", "outcome", "vote", "date"];
+  const FOCUS = ["file", "item", "meeting", "member"];  // set by links (a permalink or a meeting), not by dropdowns
   let stats = null;
   let dbPromise = null;
 
@@ -84,6 +85,12 @@
     if (state.dept) { where.push("f.dept_ids LIKE '%|' || (SELECT id FROM dept_names WHERE name = ?) || '|%'"); args.push(state.dept); }
     if (state.outcome) { where.push("f.outcome_cat = ?"); args.push(state.outcome); }
     if (state.topic) { where.push("f.topic_ids LIKE '%|' || (SELECT id FROM topic_names WHERE name = ?) || '|%'"); args.push(state.topic); }
+    if (state.hood) { where.push("f.hood_ids LIKE '%|' || (SELECT id FROM hood_names WHERE name = ?) || '|%'"); args.push(state.hood); }
+    if (state.member) {
+      const prof = stats && stats.profiles && stats.profiles[state.member];
+      const last = prof ? prof.last_name : state.member.split(" ").pop();
+      where.push("f.is_council = 1 AND (f.sponsors LIKE ? OR f.mover = ?)"); args.push("%" + last + "%", state.member);
+    }
     if (state.vote === "@split") where.push("f.dissent <> ''");
     else if (state.vote) { where.push("f.dissent LIKE ?"); args.push("%" + state.vote + "|%"); }
     const t = today();
@@ -160,7 +167,7 @@
     const { fts, allArgs, order, hits } = searchParts();
     try {
       // Step 1: which 20 pieces of legislation, in what order (reads only the index + facets).
-      const groups = await d.query(`SELECT k FROM ${hits} GROUP BY k ORDER BY ${order} LIMIT ${PAGE} OFFSET ${state.offset}`, allArgs);
+      const groups = await d.query(`SELECT k FROM ${hits} GROUP BY k ORDER BY ${order} LIMIT ${pageSize()} OFFSET ${state.offset}`, allArgs);
       const keys = groups.map((g) => g.k);
       const mids = keys.filter((k) => k > 0), lone = keys.filter((k) => k < 0).map((k) => -k);
       // Step 2: every step in those pieces' histories, plus highlighted snippets of the matches.
@@ -204,10 +211,10 @@
         $("result-list").innerHTML = "";
         $("csv").hidden = !c.n;
         if (!c.n) renderNothing(fts ? "Nothing matches. Try fewer words, a word ending with *, or clear the filters." : "Nothing matches these filters.");
-        $("more").hidden = c.n <= state.offset + PAGE;
+        $("more").hidden = c.n <= state.offset + pageSize();
         $("more").dataset.total = c.n;
       } else {
-        $("more").hidden = Number($("more").dataset.total) <= state.offset + PAGE;
+        $("more").hidden = Number($("more").dataset.total) <= state.offset + pageSize();
       }
       const byKey = new Map(keys.map((k) => [k, []]));
       steps.forEach((r) => { const k = r.matter_id || -r.item_id; if (byKey.has(k)) byKey.get(k).push(r); });
@@ -224,8 +231,9 @@
   function renderHead(n, meetings, isSearch) {
     const things = (x) => `${x.toLocaleString()} ${x === 1 ? "item" : "items"}`;
     let h;
-    if (state.file) h = `File ${esc(state.file)}`;
-    else if (state.meeting) h = esc($("res-h").dataset.meetingTitle || "Meeting agenda");
+    if (state.member) h = `${things(n)} sponsored by ${esc(state.member)}`;
+    else if (state.file) h = `File ${esc(state.file)}`;
+    else if (state.meeting && !state.member) h = esc($("res-h").dataset.meetingTitle || "Meeting agenda");
     else if (isSearch) h = `${n.toLocaleString()} result${n === 1 ? "" : "s"} for “${esc(state.q.trim())}”`;
     else if (state.vote === "@split") h = `${n.toLocaleString()} split vote${n === 1 ? "" : "s"}`;
     else if (state.vote) h = `${things(n)} where ${esc(state.vote)} voted no or abstained`;
@@ -426,6 +434,8 @@
     document.querySelectorAll(".toggle button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.period === state.period)));
     $("period-long").textContent = p.long;
     $("period-short-1").textContent = p.short;
+    $("period-short-2").textContent = p.short;
+    renderHoods().catch((e) => console.error(e));
 
     // Topics: up to 5 risers and 5 fallers.
     const up = p.topics.filter((t) => t.change === null ? t.cur > 0 : t.change > 0).slice(0, 5);
@@ -455,7 +465,7 @@
       const out = m.absent + m.abstain;
       const dissent = m.no + m.abstain;
       return `<tr>
-        <th scope="row"><button type="button" data-sponsor="${esc(m.name)}" style="font:inherit;font-weight:600;color:var(--ink);background:none;border:0;padding:0;cursor:pointer;text-align:left">${esc(m.name)}</button></th>
+        <th scope="row"><button type="button" data-member="${esc(m.name)}" title="Open ${esc(m.name)}'s page" style="font:inherit;font-weight:600;color:var(--ink);background:none;border:0;padding:0;cursor:pointer;text-align:left">${esc(m.name)}</button></th>
         <td class="num">${m.present}%</td>
         <td><div class="stack" title="${esc(m.name)}: ${m.yes} yes, ${m.no} no, ${out} absent or abstained">${
           [[m.yes, "var(--yes)"], [m.no, "var(--no)"], [out, "var(--absent)"]]
@@ -476,8 +486,105 @@
     add("f-dept", stats.lists.departments);
     add("f-vote", stats.lists.voters || [], (v) => "No or abstain: " + v);
     add("f-topic", stats.lists.topics || []);
+    add("f-hood", stats.lists.neighborhoods || []);
     const when = stats.updated_at ? new Date(stats.updated_at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : "—";
     $("updated").textContent = `Last updated ${when} · ${stats.meetings_indexed.toLocaleString()} meetings and ${stats.items_indexed.toLocaleString()} items indexed.`;
+  }
+
+  // ------------------------------------------------------------- member pages
+  function renderMember() {
+    const box = $("member-card");
+    const p = state.member && stats && stats.profiles ? stats.profiles[state.member] : null;
+    if (!state.member) { box.hidden = true; box.innerHTML = ""; return; }
+    if (!p) { box.hidden = false; box.innerHTML = `<p class="muted">No voting record found for ${esc(state.member)}.</p>`; return; }
+    const y = stats.today.slice(0, 4);
+    const pct = (t) => t.total ? `${t.present}%` : "—";
+    const roles = p.roles.length
+      ? p.roles.map((r) => `<li><b>${esc(r.title || "Member")}</b> · ${esc(r.body)}</li>`).join("")
+      : `<li class="muted">No current committee assignments listed in Legistar.</li>`;
+    const past = p.past_roles.length ? `<details><summary>Earlier roles (${p.past_roles.length})</summary><ul>${p.past_roles.map((r) =>
+      `<li>${esc(r.title || "Member")} · ${esc(r.body)} <span class="muted">(${esc(fmtDate(r.start))} – ${esc(fmtDate(r.end))})</span></li>`).join("")}</ul></details>` : "";
+    const sp = p.sponsored;
+    const kinds = ["ordinance", "resolution", "motion"].filter((k) => sp.by_kind[k]).map((k) => `${sp.by_kind[k]} ${KIND_LABEL[k].toLowerCase()}${sp.by_kind[k] === 1 ? "" : "s"}`).join(", ");
+    const topics = sp.top_topics.map((t) => `<button type="button" class="chip" data-go='${esc(JSON.stringify({ member: p.name, topic: t }))}'>${esc(t)}</button>`).join("");
+    const dissents = p.all_time.no + p.all_time.abstain;
+    box.hidden = false;
+    box.innerHTML = `
+      <div class="member-head">
+        <div>
+          <h2>${esc(p.name)}${p.active ? "" : ' <span class="badge-past">Former member</span>'}</h2>
+          <p class="muted">Final votes in this record: ${esc(fmtDate(p.first_vote))} – ${esc(fmtDate(p.last_vote))}</p>
+        </div>
+        <button type="button" class="linkish" data-copy="${esc(location.origin + location.pathname + "?member=" + encodeURIComponent(p.name))}">Copy link</button>
+      </div>
+      <div class="member-stats">
+        <div><span class="v">${pct(p.this_year)}</span><span class="l lab">Present for final votes, ${y}<button type="button" class="tip" data-tip="col_present" aria-label="About attendance">i</button></span></div>
+        <div><span class="v">${pct(p.all_time)}</span><span class="l">Present, all years</span></div>
+        <div><span class="v">${p.all_time.yes.toLocaleString()}</span><span class="l">Yes votes</span></div>
+        <div><span class="v">${dissents ? `<button type="button" class="count-btn big" data-vote="${esc(p.name)}">${dissents}</button>` : "0"}</span><span class="l lab">No or abstain<button type="button" class="tip" data-tip="col_dissent" aria-label="About no votes">i</button></span></div>
+        <div><span class="v">${sp.total.toLocaleString()}</span><span class="l lab">Items sponsored<button type="button" class="tip" data-tip="member_sponsored" aria-label="About sponsorship">i</button></span></div>
+      </div>
+      <div class="member-cols">
+        <div><h3>Current roles</h3><ul class="roles">${roles}</ul>${past}</div>
+        <div><h3>What they sponsor</h3>
+          <p>${kinds ? esc(kinds) : "No sponsored items found"}${sp.passed ? `; ${sp.passed} passed or adopted` : ""}.</p>
+          ${topics ? `<div class="chips">${topics}</div>` : ""}</div>
+      </div>`;
+  }
+
+  // ------------------------------------------------------------- neighborhoods
+  let hoodShapes;  // undefined = not loaded yet, null = unavailable
+  async function loadHoodShapes() {
+    if (hoodShapes !== undefined) return hoodShapes;
+    try {
+      const r = await fetch("data/neighborhoods.geojson", { cache: "no-cache" });
+      hoodShapes = r.ok ? await r.json() : null;
+    } catch (e) { hoodShapes = null; }
+    return hoodShapes;
+  }
+
+  const SEQ = ["#b7d3f6", "#86b6ef", "#5598e7", "#2a78d6", "#1c5cab"];  // light → dark blue
+
+  async function renderHoods() {
+    const p = stats.periods[state.period];
+    const rows = (p.neighborhoods || []).slice();
+    const byName = new Map(rows.map((r) => [r.name, r]));
+    const nonzero = rows.map((r) => r.cur).filter((n) => n > 0).sort((a, b) => a - b);
+    const cut = (q) => nonzero.length ? nonzero[Math.min(nonzero.length - 1, Math.floor(q * nonzero.length))] : 0;
+    const bins = [cut(0.2), cut(0.4), cut(0.6), cut(0.8)];
+    const colorFor = (n) => !n ? "#eef1f6" : SEQ[bins.filter((b) => n > b).length];
+    const go = (name) => esc(JSON.stringify({ hood: name, from: p.cur[0], to: p.cur[1], label: p.short.split(" vs.")[0] }));
+    const change = (r) => r.prev ? `${r.cur >= r.prev ? "+" : "−"}${Math.abs(Math.round((r.cur - r.prev) / r.prev * 100))}% vs. a year earlier` : (r.cur ? "none a year earlier" : "");
+
+    // Ranked list (also the fallback when the map can't be drawn)
+    const top = rows.filter((r) => r.cur > 0).sort((a, b) => b.cur - a.cur).slice(0, 12);
+    const max = Math.max(1, ...top.map((r) => r.cur));
+    $("hood-list").innerHTML = top.length ? top.map((r) => `<li><button type="button" class="hood-row" data-go='${go(r.name)}' aria-label="${esc(r.name)}: ${r.cur} items. Show them.">
+        <span class="n">${esc(r.name)}</span><span class="bar"><span style="width:${(r.cur / max) * 100}%"></span></span><span class="v">${r.cur}</span></button></li>`).join("")
+      : `<li class="empty">No neighborhood mentions in this period yet.</li>`;
+
+    const shapes = await loadHoodShapes();
+    const mapBox = $("hood-map");
+    if (!shapes || !shapes.features || !shapes.features.length) { mapBox.hidden = true; $("hood-attrib").hidden = true; return; }
+    // Simple map projection: longitude scaled by cos(latitude) so shapes aren't stretched.
+    let minX = 180, maxX = -180, minY = 90, maxY = -90;
+    shapes.features.forEach((f) => f.geometry.coordinates.forEach((poly) => poly[0].forEach(([x, y]) => {
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    })));
+    const kx = Math.cos(((minY + maxY) / 2) * Math.PI / 180);
+    const W = 600, scale = W / ((maxX - minX) * kx), H = Math.round((maxY - minY) * scale);
+    const pt = ([x, y]) => `${((x - minX) * kx * scale).toFixed(1)},${((maxY - y) * scale).toFixed(1)}`;
+    const paths = shapes.features.map((f) => {
+      const name = f.properties.name, r = byName.get(name) || { cur: 0, prev: 0 };
+      const d = f.geometry.coordinates.map((poly) => "M" + poly[0].map(pt).join("L") + "Z").join("");
+      return `<path d="${d}" fill="${colorFor(r.cur)}" tabindex="0" role="button" data-go='${go(name)}'
+        data-tip-title="${esc(name)}" data-tip-text="${r.cur} item${r.cur === 1 ? "" : "s"} ${esc(p.short.split(" vs.")[0])}${change(r) ? " · " + esc(change(r)) : ""}. Click to see them."
+        aria-label="${esc(name)}: ${r.cur} items. Show them."></path>`;
+    }).join("");
+    mapBox.hidden = false;
+    $("hood-attrib").hidden = false;
+    mapBox.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="group" aria-label="Map of Cincinnati neighborhoods shaded by number of Council items">${paths}</svg>
+      <div class="legend hood-legend" aria-hidden="true"><span>Fewer items</span>${["#eef1f6", ...SEQ].map((c) => `<i style="background:${c}"></i>`).join("")}<span>More</span></div>`;
   }
 
   // ------------------------------------------------------------- copy, CSV, upcoming meetings
@@ -544,10 +651,10 @@
     const tip = $("tooltip");
     let current = null, shownAt = 0;
     const show = (el) => {
-      const g = GLOSSARY[el.dataset.tip];
+      const g = el.dataset.tipText ? [el.dataset.tipTitle || "", el.dataset.tipText] : GLOSSARY[el.dataset.tip];
       if (!g) return;
       if (current && current !== el) hide();
-      tip.innerHTML = `<b>${esc(g[0])}</b><span>${esc(g[1])}</span>`;
+      tip.innerHTML = (g[0] ? `<b>${esc(g[0])}</b>` : "") + `<span>${esc(g[1])}</span>`;
       if (current !== el) shownAt = Date.now();
       tip.hidden = false;
       el.setAttribute("aria-describedby", "tooltip");
@@ -577,23 +684,26 @@
     let lastTouch = 0;
     const touchy = () => Date.now() - lastTouch < 1500 || window.matchMedia("(hover: none)").matches;
     document.addEventListener("pointerdown", (e) => { if (e.pointerType !== "mouse") lastTouch = Date.now(); }, true);
-    document.addEventListener("mouseover", (e) => { if (touchy()) return; const el = e.target.closest("[data-tip]"); if (el) show(el); });
+    document.addEventListener("mouseover", (e) => { if (touchy()) return; const el = e.target.closest("[data-tip],[data-tip-text]"); if (el) show(el); });
     document.addEventListener("mouseout", (e) => {
       if (touchy()) return;
-      const el = e.target.closest("[data-tip]");
+      const el = e.target.closest("[data-tip],[data-tip-text]");
       if (el && el === current && !el.contains(e.relatedTarget)) hide();
     });
-    document.addEventListener("focusin", (e) => { const el = e.target.closest("[data-tip]"); if (el) show(el); });
-    document.addEventListener("focusout", (e) => { if (e.target.closest("[data-tip]") === current) hide(); });
+    document.addEventListener("focusin", (e) => { const el = e.target.closest("[data-tip],[data-tip-text]"); if (el) show(el); });
+    document.addEventListener("focusout", (e) => { if (e.target.closest("[data-tip],[data-tip-text]") === current) hide(); });
     // Touch: tap to open, tap again (or anywhere else) to close.
     document.addEventListener("pointerup", (e) => {
       if (e.pointerType === "mouse") return;
-      const el = e.target.closest("[data-tip]");
+      const el = e.target.closest("[data-tip],[data-tip-text]");
       if (el && el === current && Date.now() - shownAt > 400) hide();
       else if (el) show(el);
       else hide();
     });
-    document.addEventListener("keydown", (e) => { if (e.key === "Escape") hide(); });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") hide();
+      if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches('path[role="button"]')) { e.preventDefault(); e.target.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
+    });
     window.addEventListener("scroll", place, { passive: true });
     window.addEventListener("resize", place);
   }
@@ -635,6 +745,7 @@
   const anyFilter = () => [...FILTERS, ...FOCUS].some((k) => state[k]);
 
   function search() {
+    renderMember();
     state.q = $("q").value;
     state.offset = 0;
     writeUrl();
@@ -657,12 +768,20 @@
       setTimeout(search, 0);
     });
     document.querySelectorAll("#sorter button").forEach((b) => b.addEventListener("click", () => { state.sort = b.dataset.sort; search(); }));
-    $("more").addEventListener("click", () => { state.offset += PAGE; runSearch(true); });
+    $("more").addEventListener("click", () => { state.offset += pageSize(); runSearch(true); });
     $("csv").addEventListener("click", downloadCsv);
     document.querySelectorAll(".toggle button").forEach((b) => b.addEventListener("click", () => { state.period = b.dataset.period; renderPeriod(); }));
     document.addEventListener("click", (e) => {
       const v = e.target.closest("[data-votes]");
       if (v) showVotes(v.dataset.votes, v);
+      const mb = e.target.closest("[data-member]");
+      if (mb) {
+        [...FILTERS, ...FOCUS].forEach((k) => { state[k] = ""; });
+        state.member = mb.dataset.member; $("q").value = ""; state.q = "";
+        syncFilterControls(); search();
+        $("member-card").scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
       const cp = e.target.closest("[data-copy]");
       if (cp) { copyText(cp.dataset.copy, cp); return; }
       const mt = e.target.closest("[data-meeting]");
@@ -678,7 +797,7 @@
       if (g && !e.target.closest("button.tip")) {
         const go = JSON.parse(g.dataset.go);
         [...FILTERS, ...FOCUS].forEach((k) => { state[k] = ""; });
-        ["kind", "body", "sponsor", "dept", "topic", "outcome", "vote"].forEach((k) => { if (go[k]) state[k] = go[k]; });
+        ["kind", "body", "sponsor", "dept", "topic", "hood", "outcome", "vote", "member"].forEach((k) => { if (go[k]) state[k] = go[k]; });
         if (go.from) state.date = `${go.from}..${go.to}`;
         $("q").value = ""; state.q = "";
         syncFilterControls(go.label);

@@ -59,9 +59,36 @@ def main():
                   WHERE kind = 'other' AND matter_type = '' GROUP BY start ORDER BY 2 DESC LIMIT 12"""):
         print(f"  {r[1]:6}  starts with: {r[0]!r}")
 
+    print("\n== Committee memberships (office records) ==")
+    n_off = q("SELECT COUNT(*) FROM office_records")[0][0]
+    print(f"  {n_off} records")
+    for r in q("SELECT body, title, COUNT(*) FROM office_records WHERE end_date = '' OR end_date >= date('now') GROUP BY body, title ORDER BY body LIMIT 30"):
+        print(f"  {r[2]:3}  {r[1] or '-':<12} {r[0]}")
+    voters = {r[0] for r in q("SELECT DISTINCT person FROM votes")}
+    office_people = {r[0] for r in q("SELECT DISTINCT person FROM office_records")}
+    if n_off and voters and not (voters & office_people):
+        warnings.append("No voter names match office-record names; member pages won't show committee roles.")
+    if not n_off:
+        warnings.append("No office records downloaded; member pages won't show committee roles.")
+
+    print("\n== Neighborhood mentions (items) ==")
+    counts = {}
+    for r in q("SELECT neighborhoods FROM items WHERE neighborhoods <> ''"):
+        for h in r[0].split("; "):
+            counts[h] = counts.get(h, 0) + 1
+    for h, c in sorted(counts.items(), key=lambda x: -x[1])[:15]:
+        print(f"  {c:6}  {h}")
+    import os, json
+    gj = os.path.join(os.path.dirname(os.path.abspath(args.db)), "neighborhoods.geojson")
+    if os.path.exists(gj):
+        names = [f["properties"]["name"] for f in json.load(open(gj))["features"]]
+        print(f"  map has boundaries for {len(names)} neighborhoods")
+    else:
+        print("  map boundaries: not available (the site shows a list instead)")
+
     print("\n== Tag coverage ==")
     n = q("SELECT COUNT(*) FROM items")[0][0] or 1
-    for col in ("topics", "departments", "sponsors"):
+    for col in ("topics", "departments", "neighborhoods", "sponsors"):
         k = q(f"SELECT COUNT(*) FROM items WHERE {col} <> ''")[0][0]
         print(f"  {col:<12} {k / n:.0%} of {n} items")
 

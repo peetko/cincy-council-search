@@ -12,7 +12,7 @@ import datetime as dt
 import json
 import os
 
-from common import DEFAULT_DB, TOPIC_RX, DEPT_RX, connect, get_meta
+from common import DEFAULT_DB, TOPIC_RX, DEPT_RX, HOOD_RX, connect, get_meta
 
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 MIN_TOPIC_VOLUME = 3   # ignore topics with fewer items than this in both periods
@@ -169,6 +169,101 @@ def topics(con, sp):
     return out
 
 
+def tag_counts(con, a, b, column):
+    """Distinct pieces of legislation per tag (topics or neighborhoods) between two dates."""
+    counts, seen = collections.Counter(), set()
+    for r in con.execute(f"SELECT item_id, matter_id, {column} FROM items WHERE date BETWEEN ? AND ?", (a, b)):
+        key = r["matter_id"] or -r["item_id"]
+        for t in filter(None, (x.strip() for x in (r[column] or "").split(";"))):
+            if (key, t) not in seen:
+                seen.add((key, t))
+                counts[t] += 1
+    return counts
+
+
+def neighborhoods(con, sp):
+    cur = tag_counts(con, *sp["cur"], "neighborhoods")
+    prev = tag_counts(con, *sp["prev"], "neighborhoods")
+    return [{"name": n, "cur": cur.get(n, 0), "prev": prev.get(n, 0)} for n in HOOD_RX]
+
+
+SUFFIXES = {"jr", "jr.", "sr", "sr.", "ii", "iii", "iv"}
+
+
+def last_name(full):
+    parts = [p for p in full.replace(",", " ").split() if p.lower() not in SUFFIXES]
+    return parts[-1] if parts else full
+
+
+def member_profiles(con, today):
+    """One profile per person who has cast a final-passage vote."""
+    year_start = today.replace(month=1, day=1).isoformat()
+    t = today.isoformat()
+    votes = con.execute("""
+        SELECT v.person, v.value, i.item_id, i.date FROM votes v JOIN items i ON i.item_id = v.item_id
+        WHERE i.is_final = 1""").fetchall()
+    by_item = collections.defaultdict(list)
+    for r in votes:
+        by_item[r["item_id"]].append(r)
+    majority = {}
+    for item, vs in by_item.items():
+        yes = sum(1 for v in vs if v["value"] == "yes")
+        no = sum(1 for v in vs if v["value"] == "no")
+        majority[item] = "yes" if yes >= no else "no"
+
+    def tally(rows):
+        c = collections.Counter(v["value"] for v in rows)
+        total = len(rows)
+        absent = c["absent"] + c["other"]
+        against = sum(1 for v in rows if v["value"] in ("yes", "no") and v["value"] != majority[v["item_id"]])
+        return {"total": total, "yes": c["yes"], "no": c["no"], "abstain": c["abstain"], "absent": absent,
+                "against": against, "present": round((total - absent) / total * 100) if total else 0}
+
+    people = collections.defaultdict(list)
+    for r in votes:
+        people[r["person"]].append(r)
+    latest_vote = max((r["date"] for r in votes), default=t)
+    office = collections.defaultdict(list)
+    for r in con.execute("SELECT person, body, title, start_date, end_date FROM office_records ORDER BY start_date DESC"):
+        office[r["person"]].append(dict(r))
+
+    out = {}
+    for person, rows in people.items():
+        dates = sorted(r["date"] for r in rows)
+        last = last_name(person)
+        sponsored = con.execute("""
+            SELECT kind, outcome_cat, topics, matter_id, item_id, date FROM items
+            WHERE is_council = 1 AND (sponsors LIKE ? OR mover = ?)""", (f"%{last}%", person)).fetchall()
+        seen, kinds, kinds_ytd, passed, topics = set(), collections.Counter(), collections.Counter(), 0, collections.Counter()
+        for r in sponsored:
+            key = r["matter_id"] or -r["item_id"]
+            if key in seen:
+                continue
+            seen.add(key)
+            kinds[r["kind"]] += 1
+            if r["date"] >= year_start:
+                kinds_ytd[r["kind"]] += 1
+            for tp in filter(None, (x.strip() for x in (r["topics"] or "").split(";"))):
+                topics[tp] += 1
+        passed = len({(r["matter_id"] or -r["item_id"]) for r in sponsored if r["outcome_cat"] == "passed"})
+        recs = office.get(person, [])
+        current = [r for r in recs if not r["end_date"] or r["end_date"] >= t]
+        out[person] = {
+            "name": person, "last_name": last,
+            "first_vote": dates[0], "last_vote": dates[-1],
+            "active": dates[-1] >= (dt.date.fromisoformat(latest_vote) - dt.timedelta(days=60)).isoformat(),
+            "all_time": tally(rows),
+            "this_year": tally([r for r in rows if r["date"] >= year_start]),
+            "sponsored": {"total": len(seen), "passed": passed, "by_kind": dict(kinds), "this_year": dict(kinds_ytd),
+                          "top_topics": [n for n, _ in topics.most_common(5)]},
+            "roles": [{"body": r["body"], "title": r["title"], "start": r["start_date"], "end": r["end_date"]}
+                      for r in current if r["body"]],
+            "past_roles": [{"body": r["body"], "title": r["title"], "start": r["start_date"], "end": r["end_date"]}
+                           for r in recs if r not in current and r["body"]][:12],
+        }
+    return out
+
+
 def members(con, sp):
     a, b = sp["cur"]
     rows = con.execute("""
@@ -213,7 +308,7 @@ def lists(con):
         SELECT v.person FROM votes v JOIN items i ON i.item_id = v.item_id
         WHERE i.is_final = 1 GROUP BY v.person ORDER BY MAX(i.date) DESC, v.person""")]
     return {"bodies": bodies, "sponsors": sponsors, "departments": list(DEPT_RX), "voters": voters,
-            "topics": list(TOPIC_RX)}
+            "topics": list(TOPIC_RX), "neighborhoods": list(HOOD_RX)}
 
 
 def main():
@@ -238,6 +333,7 @@ def main():
         "monthly": monthly(con, today),
         "periods": {},
         "lists": lists(con),
+        "profiles": member_profiles(con, today),
         "db_bytes": os.path.getsize(args.db),
     }
     for key in ("month", "quarter", "year"):
@@ -245,6 +341,7 @@ def main():
             "long": sp[key]["long"], "short": sp[key]["short"],
             "cur": sp[key]["cur"], "prev": sp[key]["prev"],
             "topics": topics(con, sp[key]),
+            "neighborhoods": neighborhoods(con, sp[key]),
             **members(con, sp[key]),
         }
     with open(out_path, "w", encoding="utf-8") as f:

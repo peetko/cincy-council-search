@@ -27,6 +27,7 @@
         <a href="#search" class="on">Search</a>
         <a href="#upcoming">Coming up</a>
         <a href="#trends">Trends</a>
+        <a href="#neighborhoods">Neighborhoods</a>
         <a href="#members">Members</a>
         <a href="#about">About the data</a>
       </nav>
@@ -93,6 +94,10 @@
       <select id="f-topic" name="topic"><option value="">Any topic</option></select>
     </div>
     <div class="f">
+      <span class="lab"><label for="f-hood">Neighborhood</label><button type="button" class="tip" data-tip="hood_filter" aria-label="About neighborhoods">i</button></span>
+      <select id="f-hood" name="hood"><option value="">Anywhere</option></select>
+    </div>
+    <div class="f">
       <span class="lab"><label for="f-outcome">Outcome</label><button type="button" class="tip" data-tip="outcome" aria-label="About outcomes">i</button></span>
       <select id="f-outcome" name="outcome">
         <option value="">Any outcome</option>
@@ -130,6 +135,7 @@
 
   <div class="row">
     <section class="results" id="results" aria-labelledby="res-h" aria-live="polite">
+      <section class="card member-card" id="member-card" aria-live="polite" hidden></section>
       <div class="results-head">
         <h2 id="res-h">Loading…</h2>
         <div class="sorter" id="sorter" hidden>
@@ -200,10 +206,22 @@
       </figure>
     </div>
 
+    <figure class="chart full" id="neighborhoods">
+      <figcaption>
+        <span class="t lab">Where the activity is<button type="button" class="tip" data-tip="chart_hoods" aria-label="About this map">i</button></span>
+        <span class="s">Items mentioning each neighborhood, <span id="period-short-2"></span>. Click a neighborhood to see its items.</span>
+      </figcaption>
+      <div class="hoods">
+        <div class="hood-map" id="hood-map" hidden></div>
+        <ol class="hood-list" id="hood-list"></ol>
+      </div>
+      <span class="s muted" id="hood-attrib" hidden style="font-size:12px">Neighborhood boundaries © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors.</span>
+    </figure>
+
     <figure class="chart full" id="members">
       <figcaption class="cap-row">
         <span style="display:flex;flex-direction:column;gap:4px">
-          <span class="t lab">How members voted<button type="button" class="tip" data-tip="chart_members" aria-label="About this table">i</button></span>
+          <span class="t lab">How members voted (click a name for their page)<button type="button" class="tip" data-tip="chart_members" aria-label="About this table">i</button></span>
           <span class="s" id="members-sub"></span>
         </span>
         <span class="legend">
@@ -230,7 +248,8 @@
   </section>
 
   <footer class="site" id="about">
-    <span>Source: City of Cincinnati Legistar public data (<a href="https://cincinnatioh.legistar.com">cincinnatioh.legistar.com</a>). Updated daily. This is an independent project, not an official City record or website. The Clerk of Council keeps the official minutes.</span>
+    <span><b>How current is this?</b> The site updates itself every morning at about 6 a.m. Eastern. Anything the Clerk of Council posts to Legistar (agendas for upcoming meetings, minutes, roll-call votes) shows up here the next morning. Agendas appear before a meeting; minutes and votes appear only once the Clerk publishes them, which is often some time after the meeting. The time of the latest update is at the bottom of this page.</span>
+    <span>Source: City of Cincinnati Legistar public data (<a href="https://cincinnatioh.legistar.com">cincinnatioh.legistar.com</a>). This is an independent project, not an official City record or website. The Clerk of Council keeps the official minutes.</span>
     <span>Explanations of how Council works are adapted from WVXU's guides: <a href="https://www.wvxu.org/politics/2026-05-28/understand-cincinnati-council-legislation-agendas">How to understand Council legislation and agendas</a> and <a href="https://www.wvxu.org/politics/2026-05-19/cincinnati-government-action-opinion">How to keep up with Cincinnati government</a>.</span>
     <span>Topic and department tags come from keyword lists, so treat the trend numbers as a guide, not an exact count.</span>
     <!-- OPTIONAL: to invite alert requests, replace [YOUR EMAIL] below and remove the comment markers around the line.
