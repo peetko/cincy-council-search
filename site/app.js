@@ -264,6 +264,7 @@
   async function reconnect() {
     dbPromise = null;
     try { const r = await fetch("data/stats.json", { cache: "no-cache" }); if (r.ok) stats = await r.json(); } catch (e) { /* keep old stats */ }
+    if (analysis) loadAnalysis();
     console.info("Plum Street Ledger: the data was updated while this page was open; reconnected.");
     $("timing").textContent = "The data was just updated; reconnecting…";
     return db();
@@ -471,7 +472,7 @@
 
   function renderPeriod() {
     const p = stats.periods[state.period];
-    document.querySelectorAll(".toggle button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.period === state.period)));
+    document.querySelectorAll(".toggle button[data-period]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.period === state.period)));
     $("period-long").textContent = p.long;
     $("period-short-1").textContent = p.short;
     $("period-short-2").textContent = p.short;
@@ -828,7 +829,7 @@
     document.querySelectorAll("#sorter button").forEach((b) => b.addEventListener("click", () => { state.sort = b.dataset.sort; search(); }));
     $("more").addEventListener("click", () => { state.offset += pageSize(); runSearch(true); });
     $("csv").addEventListener("click", downloadCsv);
-    document.querySelectorAll(".toggle button").forEach((b) => b.addEventListener("click", () => { state.period = b.dataset.period; renderPeriod(); }));
+    document.querySelectorAll(".toggle button[data-period]").forEach((b) => b.addEventListener("click", () => { state.period = b.dataset.period; renderPeriod(); }));
     document.addEventListener("click", (e) => {
       const v = e.target.closest("[data-votes]");
       if (v) showVotes(v.dataset.votes, v);
@@ -855,9 +856,9 @@
       if (g && !e.target.closest("button.tip")) {
         const go = JSON.parse(g.dataset.go);
         [...FILTERS, ...FOCUS].forEach((k) => { state[k] = ""; });
-        ["kind", "body", "sponsor", "dept", "topic", "hood", "outcome", "vote", "member"].forEach((k) => { if (go[k]) state[k] = go[k]; });
+        ["kind", "body", "sponsor", "dept", "topic", "hood", "outcome", "vote", "member", "file"].forEach((k) => { if (go[k]) state[k] = go[k]; });
         if (go.from) state.date = `${go.from}..${go.to}`;
-        $("q").value = ""; state.q = "";
+        $("q").value = go.q || ""; state.q = go.q || "";
         syncFilterControls(go.label);
         search();
         document.getElementById("res-h").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -887,8 +888,204 @@
     });
   }
 
+  // ------------------------------------------------------------- analysis (loaded when scrolled into view)
+  let analysis = null, analysisLoading = null;
+  const an = { span: "years", metric: "ordinances", stuckWhere: "", stuckShown: 6, lobbyShown: 12 };
+  const METRICS = [
+    { key: "ordinances", label: "Ordinances passed", go: { kind: "ordinance", body: "@council", outcome: "passed" }, noun: "ordinances passed" },
+    { key: "resolutions", label: "Resolutions adopted", go: { kind: "resolution", body: "@council", outcome: "passed" }, noun: "resolutions adopted" },
+    { key: "motions", label: "Motions", go: { kind: "motion", body: "@council" }, noun: "motions at Council" },
+    { key: "split_votes", label: "Split votes", go: { vote: "@split" }, noun: "final votes with at least one no or abstain" },
+    { key: "emergency_share", label: "Emergency share", go: { kind: "ordinance", body: "@council", outcome: "passed" }, noun: "of ordinances passed as emergencies", pct: true, tip: "an_emergency_share" },
+    { key: "meetings", label: "Meetings", go: {}, noun: "meetings of Council and its committees" },
+  ];
+  const plural = (n, one, many) => `${n.toLocaleString()} ${n === 1 ? one : (many || one + "s")}`;
+  const dayWord = (n) => n === 0 ? "same day" : plural(Math.round(n), "day");
+  const goAttr = (o) => `data-go='${esc(JSON.stringify(o))}'`;
+
+  function watchAnalysis() {
+    const box = $("analysis");
+    const load = () => { if (!analysisLoading) analysisLoading = loadAnalysis(); };
+    if (location.hash === "#analysis" || !("IntersectionObserver" in window)) return load();
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); load(); } }, { rootMargin: "800px 0px" });
+    io.observe(box);
+    document.querySelector('nav.main a[href="#analysis"]').addEventListener("click", load);
+  }
+
+  async function loadAnalysis() {
+    try {
+      const r = await fetch("data/analysis.json", { cache: "no-cache" });
+      if (!r.ok) throw new Error("analysis.json " + r.status);
+      analysis = await r.json();
+      $("analysis-status").hidden = true;
+      renderAnalysis();
+    } catch (e) {
+      console.error(e);
+      $("analysis-status").textContent = "The analysis isn't available yet. It's built with each daily update.";
+    }
+  }
+
+  function renderAnalysis() {
+    if (!analysis) return;
+    const parts = [renderLongTrends, renderTiming, renderStuck, renderLobbying, renderCommittees];
+    parts.forEach((fn) => { try { fn(); } catch (e) { console.error(e); } });
+  }
+
+  // ---- The long view: one metric per year or Council term, plus a topic grid
+  function renderLongTrends() {
+    const t = analysis.trends, periods = t[an.span], m = METRICS.find((x) => x.key === an.metric);
+    $("long-trends").hidden = false;
+    document.querySelectorAll("[data-span]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.span === an.span)));
+    $("metric-chips").innerHTML = METRICS.map((x) => `<button type="button" class="chip${x.key === an.metric ? " on" : ""}" data-metric="${x.key}" aria-pressed="${x.key === an.metric}">${esc(x.label)}</button>`).join("")
+      + (m.tip ? `<button type="button" class="tip" data-tip="${m.tip}" aria-label="About this measure">i</button>` : "");
+    const vals = periods.map((p) => p[m.key] == null ? 0 : p[m.key]);
+    const top = m.pct ? 100 : niceMax(Math.max(1, ...vals));
+    const cols = periods.map((p, i) => {
+      const v = p[m.key];
+      const months = p.days / 30.44;
+      const rate = !m.pct && v != null && p.partial ? ` That's about ${(v / months).toFixed(v / months < 10 ? 1 : 0)} a month over the ${Math.round(months)} months covered.` : "";
+      const label = p.label.replace(" (partial)", "");
+      const text = v == null ? "No ordinances passed in this period." : `${m.pct ? v + "%" : v.toLocaleString()} ${m.noun}, ${fmtDate(p.start)} – ${fmtDate(p.end)}.${rate}${m.key === "meetings" ? " Click to see the items." : " Click to see them."}`;
+      return `<div class="col"><button type="button" class="bar" ${goAttr({ ...m.go, from: p.start, to: p.end, label })}
+          data-tip-title="${esc(label)}${p.partial ? " (partial)" : ""}" data-tip-text="${esc(text)}" aria-label="${esc(label)}: ${esc(text)}">
+          <em class="val">${v == null ? "–" : (m.pct ? v + "%" : v.toLocaleString())}</em>
+          <span class="${p.partial ? "partial" : ""}" style="height:${((v || 0) / top) * 100}%"></span></button></div>`;
+    }).join("");
+    const grid = `<div class="g" style="top:0"></div><div class="g" style="top:50%"></div><div class="g base" style="bottom:0"></div>`;
+    $("lt-chart").innerHTML = `<div class="bars-chart"><div class="y lt-y"><span>${m.pct ? "100%" : top}</span><span>${m.pct ? "50%" : Math.round(top / 2)}</span><span>0</span></div>
+      <div class="plotwrap"><div class="plot lt-plot"><div class="inner">${grid}<div class="cols">${cols}</div></div></div>
+      <div class="xlabels">${periods.map((p) => `<span>${esc(p.label.replace(" (partial)", ""))}${p.partial ? "<small>partial</small>" : ""}</span>`).join("")}</div></div></div>`;
+
+    // Topic grid: shade each cell by items per month, compared within the topic's own row.
+    const series = t[an.span === "years" ? "topics_by_year" : "topics_by_term"];
+    const rows = Object.entries(series).map(([name, counts]) => ({ name, counts, total: counts.reduce((a, b) => a + b, 0) }))
+      .filter((r) => r.total > 0).sort((a, b) => b.total - a.total);
+    const head = `<thead><tr><th scope="col">Topic</th>${periods.map((p) => `<th scope="col" class="num">${esc(p.label.replace(" (partial)", ""))}${p.partial ? "*" : ""}</th>`).join("")}</tr></thead>`;
+    const body = rows.map((r) => {
+      const rates = r.counts.map((c, i) => c / Math.max(1, periods[i].days));
+      const max = Math.max(...rates) || 1;
+      return `<tr><th scope="row">${esc(r.name)}</th>${r.counts.map((c, i) => {
+        const level = c ? Math.min(SEQ.length - 1, Math.floor((rates[i] / max) * SEQ.length - 0.0001)) : -1;
+        const p = periods[i], label = p.label.replace(" (partial)", "");
+        const style = level < 0 ? "" : `background:${SEQ[level]};${level >= 3 ? "color:#fff;" : ""}`;
+        return `<td class="num"><button type="button" class="cell" style="${style}" ${goAttr({ topic: r.name, from: p.start, to: p.end, label })}
+          aria-label="${esc(r.name)}, ${esc(label)}: ${c} items. Show them." title="${esc(r.name)}, ${esc(label)}: ${c} item${c === 1 ? "" : "s"}">${c}</button></td>`;
+      }).join("")}</tr>`;
+    }).join("");
+    $("topic-grid").innerHTML = head + `<tbody>${body}</tbody>`;
+  }
+
+  // ---- How long legislation takes
+  function renderTiming() {
+    const t = analysis.timing;
+    if (!t || !t.by_kind) return;
+    $("time-to-pass").hidden = false;
+    const tiles = [["ordinance", "Ordinances"], ["resolution", "Resolutions"]].filter(([k]) => t.by_kind[k]).map(([k, label]) => {
+      const s = t.by_kind[k];
+      return `<div><span class="v">${dayWord(s.median)}</span><span class="l">${label}: typical time (median) across ${s.n.toLocaleString()}. The middle half took ${s.p25}–${plural(s.p75, "day")}.</span></div>`;
+    }).join("");
+    $("timing-tiles").innerHTML = tiles;
+    const rows = (t.by_committee || []).slice(0, 8);
+    const max = Math.max(30, ...rows.map((r) => r.p75));
+    $("timing-committees").innerHTML = rows.length ? `<span class="t lab" style="font-size:14px">By the committee that heard it first</span>` + rows.map((r) => `
+      <button type="button" class="range-row" ${goAttr({ body: r.body })} data-tip-title="${esc(r.body)}"
+        data-tip-text="${esc(`Of ${r.n} items that went through this committee and got a final vote, half took less than ${dayWord(r.median)} and the middle half took ${r.p25}–${r.p75} days. Click to see this committee's items.`)}">
+        <span class="n">${esc(r.body)}</span>
+        <span class="track"><span class="iqr" style="left:${(r.p25 / max) * 100}%;width:${Math.max(1, ((r.p75 - r.p25) / max) * 100)}%"></span><span class="dot" style="left:${(r.median / max) * 100}%"></span></span>
+        <span class="v">${Math.round(r.median)}d</span></button>`).join("")
+      + `<div class="range-axis"><span>0 days</span><span>${max} days</span></div><div class="legend"><span><i class="lg-iqr"></i>Middle half of items</span><span><i class="lg-dot"></i>Median</span></div>` : "";
+    const years = Object.entries(t.by_year || {}).filter(([, s]) => s && s.n >= 10);
+    const ymax = Math.max(1, ...years.map(([, s]) => s.median));
+    $("timing-years").innerHTML = years.length ? `<span class="t lab" style="font-size:14px">Typical days to a final vote, by year of the vote</span>
+      <span class="year-cols">${years.map(([y, s]) => `<span class="yc" tabindex="0" data-tip-title="${y}" data-tip-text="${esc(`Median ${dayWord(s.median)} across ${s.n} items that got a final vote in ${y}; the middle half took ${s.p25}–${s.p75} days.`)}">
+        <em>${Math.round(s.median)}</em><span style="height:${(s.median / ymax) * 100}%"></span><small>${y}</small></span>`).join("")}</span>` : "";
+  }
+
+  // ---- Items that seem stuck
+  function renderStuck() {
+    const t = analysis.timing;
+    if (!t || !t.stuck) return;
+    $("stuck").hidden = false;
+    $("stuck-sub").textContent = `${t.stuck_total.toLocaleString()} ordinances, resolutions and motions whose last step was a referral or hold at least ${t.stuck_days} days ago, with no final vote and not filed. Most recently stalled first; some were later replaced by new legislation.`;
+    const where = (t.stuck_by_where || []).slice(0, 6);
+    $("stuck-where").innerHTML = [["", "All", t.stuck_total], ...where.map(([w, n]) => [w, /city council$/i.test(w) ? "Full Council" : w, n])].map(([v, label, n]) =>
+      `<button type="button" class="chip${an.stuckWhere === v ? " on" : ""}" data-stuck-where="${esc(v)}" aria-pressed="${an.stuckWhere === v}">${esc(label)} <b>${n.toLocaleString()}</b></button>`).join("");
+    const list = t.stuck.filter((s) => !an.stuckWhere || s.where === an.stuckWhere);
+    const whereName = (w) => /city council$/i.test(w || "") ? "Full Council" : (w || "");
+    const STATUS = { referred: "Referred", held: "Held", recommended: "Recommended, no final vote", other: "No action recorded" };
+    $("stuck-list").innerHTML = list.slice(0, an.stuckShown).map((s) => `<li>
+        <div class="top"><button type="button" class="linkish mono" ${goAttr({ file: s.file })} aria-label="Show file ${esc(s.file)}">${esc(s.file)}</button>
+        <span class="kind" data-tip="${esc(s.kind)}" tabindex="0">${esc(KIND_LABEL[s.kind] || s.kind)}</span>
+        <span class="wait">${plural(s.waiting, "day")} waiting</span></div>
+        <p>${esc(s.title)}</p>
+        <span class="muted small">${esc(STATUS[s.status] || s.status)} · ${esc(whereName(s.where))} · last step ${fmtDate(s.last)}${s.first !== s.last ? `, first seen ${fmtDate(s.first)}` : ""}</span></li>`).join("")
+      || `<li class="empty">Nothing here right now.</li>`;
+    const more = $("stuck-more");
+    more.hidden = list.length <= an.stuckShown;
+    more.textContent = `Show more (${Math.min(list.length, t.stuck.length) - an.stuckShown} more${t.stuck_total > t.stuck.length && !an.stuckWhere ? `; the ${t.stuck.length} most recent are listed` : ""})`;
+  }
+
+  // ---- Lobbying
+  function renderLobbying() {
+    const l = analysis.lobbying;
+    if (!l || !l.registrations) return;
+    $("lobbying").hidden = false;
+    $("lobby-sub").textContent = `${plural(l.registrations, "lobbyist registration")} filed with the Clerk since July 2020, for ${plural(l.clients_total, "client")}. Clients are sorted by how many later agenda items name them.`;
+    const years = Object.entries(l.per_year || {});
+    const max = Math.max(1, ...years.map(([, n]) => n));
+    $("lobby-years").setAttribute("aria-label", "Registrations per year: " + years.map(([y, n]) => `${y}: ${n}`).join(", "));
+    $("lobby-years").innerHTML = `<span class="mb-title">Registrations per year</span><span class="mb-bars">${years.map(([y, n]) => `<span class="mb" data-tip-title="${y}" data-tip-text="${plural(n, "registration")}" tabindex="0"><span style="height:${(n / max) * 100}%"></span><small>${y.slice(2)}</small></span>`).join("")}</span>`;
+    $("lobby-rows").innerHTML = l.clients.slice(0, an.lobbyShown).map((c) => {
+      const r = c.recent[0];
+      return `<tr><th scope="row">${esc(c.client)}</th>
+        <td>${esc(c.agents.join(", ")) || "<span class='muted'>not parsed</span>"}</td>
+        <td class="num"><span title="First ${esc(fmtDate(c.first))}, latest ${esc(fmtDate(c.last))}">${c.registrations}</span></td>
+        <td class="num">${c.mentions ? `<button type="button" class="count-btn" ${goAttr({ q: c.query, from: c.first, to: addDays(today(), 90), label: "Since " + fmtDate(c.first) })} aria-label="Show ${c.mentions} pieces of legislation naming ${esc(c.client)}">${c.mentions.toLocaleString()}</button>` : `<span class="muted">0</span>`}</td>
+        <td class="recent">${r ? `<span class="muted small">${fmtDate(r.date)}${r.file ? ` · <button type="button" class="linkish mono" ${goAttr({ file: r.file })}>${esc(r.file)}</button>` : ""}</span><span class="small">${esc(r.title)}</span>` : ""}</td></tr>`;
+    }).join("") || `<tr><td colspan="5" class="empty">No registrations could be matched to clients.</td></tr>`;
+    const more = $("lobby-more");
+    more.hidden = l.clients.length <= an.lobbyShown;
+  }
+
+  // ---- Committee workload
+  function renderCommittees() {
+    const c = analysis.committees;
+    if (!c || !c.committees) return;
+    $("committees").hidden = false;
+    const showLen = c.length_parsed > 0;
+    document.querySelectorAll(".col-length").forEach((el) => { el.hidden = !showLen; });
+    const active = c.committees.filter((r) => r.active && r.meetings_12m > 0).sort((a, b) => b.items_12m - a.items_12m);
+    const to = today();
+    $("committee-rows").innerHTML = active.map((r) => {
+      const pct = r.matters_12m ? Math.round((r.to_council_12m / r.matters_12m) * 100) : null;
+      return `<tr><th scope="row"><button type="button" class="linkish" ${goAttr({ body: r.body, from: c.since, to, label: "Last 12 months" })}>${esc(r.body)}</button></th>
+        <td class="num">${r.meetings_12m}</td><td class="num">${r.items_12m.toLocaleString()}</td>
+        <td>${pct == null ? "<span class='muted'>–</span>" : `<span class="pct" title="${r.to_council_12m} of ${r.matters_12m} pieces of legislation first heard here in the last 12 months"><span class="pbar"><span style="width:${pct}%"></span></span>${pct}%</span>`}</td>
+        <td class="num">${r.stay ? Math.round(r.stay.median) : "–"}</td>
+        ${showLen ? `<td class="num">${r.length ? `${Math.round(r.length.median)} min` : "–"}</td>` : ""}</tr>`;
+    }).join("") || `<tr><td colspan="6" class="empty">No committee meetings in the last 12 months.</td></tr>`;
+    const past = c.committees.filter((r) => !active.includes(r));
+    $("past-committees").hidden = !past.length;
+    $("past-committee-list").innerHTML = past.map((r) => `<li><button type="button" class="linkish" ${goAttr({ body: r.body })}>${esc(r.body)}</button> <span class="muted small">${plural(r.meetings_all, "meeting")}, ${fmtDate(r.first)} – ${fmtDate(r.last)}</span></li>`).join("");
+  }
+
+  function bindAnalysis() {
+    $("analysis").addEventListener("click", (e) => {
+      const sp = e.target.closest("[data-span]");
+      if (sp) { an.span = sp.dataset.span; renderLongTrends(); return; }
+      const mt = e.target.closest("[data-metric]");
+      if (mt) { an.metric = mt.dataset.metric; renderLongTrends(); $("metric-chips").querySelector(`[data-metric="${an.metric}"]`).focus(); return; }
+      const sw = e.target.closest("[data-stuck-where]");
+      if (sw) { an.stuckWhere = sw.dataset.stuckWhere; an.stuckShown = 6; renderStuck(); return; }
+    });
+    $("stuck-more").addEventListener("click", () => { an.stuckShown += 20; renderStuck(); });
+    $("lobby-more").addEventListener("click", () => { an.lobbyShown += 25; renderLobbying(); });
+    watchAnalysis();
+  }
+
   async function start() {
     bind();
+    bindAnalysis();
     try {
       const res = await fetch("data/stats.json", { cache: "no-cache" });
       if (!res.ok) throw new Error("stats.json " + res.status);

@@ -35,6 +35,9 @@ SUBJECTS = [
     ("solar installations on City buildings", "Environment and Sustainability"),
     ("the fiscal year operating budget", "Office of Budget and Evaluation"),
 ]
+LOBBY = [("Jane Doe", "Frost Brown Todd", "KROGER CO."), ("John Roe", "Taft Law", "The Port"),
+         ("Pat Lee", "Strategic Consulting", "Cincinnati Streetcar Advocates, LLC"),
+         ("Sam Park", "Dinsmore", "WASHINGTON PARK CONSERVANCY, INC.")]
 VERBS = ["AUTHORIZING", "ESTABLISHING", "MODIFYING", "APPROPRIATING funds for"]
 
 events, items, votes = [], {}, {}
@@ -73,7 +76,7 @@ def build():
                         "EventItemMatterFile": None, "EventItemMatterId": None, "EventItemActionName": None})
             for k in range(rnd.randint(10, 14) if council else rnd.randint(3, 6)):
                 iid += 1
-                reuse = council and pending and rnd.random() < 0.6
+                reuse = council and pending and rnd.random() < 0.9
                 if reuse:
                     r_mid, r_kind, r_subj, r_dept, r_title, r_day = pending.pop(0)
                     mid_this, kind, subj, dept = r_mid, r_kind, r_subj, r_dept
@@ -110,7 +113,7 @@ def build():
                         passed = 1 if rnd.random() < 0.95 else 0
                         action = ("Passed Emergency" if "(EMERGENCY)" in title else "Passed") if kind == "ORDINANCE" else "Adopted"
                     elif kind == "MOTION":
-                        action = rnd.choice(["Referred", "Adopted", "Held"])
+                        action = rnd.choice(["Referred to Housing & Growth", "Adopted", "Held"])
                     else:
                         action = rnd.choice(["Filed", "Recommend Passage", "Held"])
                 it = {"EventItemId": iid, "EventItemGuid": f"I-{iid}", "EventItemEventId": eid,
@@ -134,6 +137,21 @@ def build():
                         val = "Absent" if r < 0.04 else ("Abstain" if r < 0.05 else ("No" if (r < 0.10 or (m == "Member C" and r < 0.2)) else "Yes"))
                         vs.append({"VotePersonName": m, "VoteValueName": val, "VoteEventItemId": iid})
                     votes[iid] = vs
+            if not council and past:
+                iid += 1
+                lst.append({"EventItemId": iid, "EventItemTitle":
+                            f"The meeting began at 1:0{rnd.randint(0, 5)} p.m. and ended at {rnd.randint(1, 3)}:{rnd.randint(10, 55)} p.m.",
+                            "EventItemMatterId": None, "EventItemActionName": None, "EventItemEventId": eid})
+            if council and rnd.random() < 0.5:
+                iid += 1
+                mid += 1
+                agent, firm, client = rnd.choice(LOBBY)
+                lst.append({"EventItemId": iid, "EventItemEventId": eid, "EventItemAgendaSequence": 99,
+                            "EventItemTitle": f"REGISTRATION, submitted by the Clerk of Council, from Legislative Agent "
+                                              f"{agent}, {firm}, regarding various matters ({client}).",
+                            "EventItemActionName": "Filed" if past else None, "EventItemMatterId": mid,
+                            "EventItemMatterFile": f"{day.year}{mid % 100000:05d}", "EventItemMatterType": "Registration",
+                            "EventItemLastModifiedUtc": ev["EventLastModifiedUtc"]})
             items[eid] = lst
         d += dt.timedelta(days=7)
 

@@ -63,6 +63,9 @@ jobs:
       - name: Build statistics
         run: python scripts/build_stats.py
 
+      - name: Build analysis
+        run: python scripts/build_analysis.py
+
       - name: Data check
         run: python scripts/report.py
 

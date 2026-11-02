@@ -29,6 +29,7 @@
         <a href="#trends">Trends</a>
         <a href="#neighborhoods">Neighborhoods</a>
         <a href="#members">Members</a>
+        <a href="#analysis">Analysis</a>
         <a href="#about">About the data</a>
       </nav>
     </div>
@@ -244,6 +245,102 @@
           <tbody id="member-rows"></tbody>
         </table>
       </div>
+    </figure>
+  </section>
+
+  <section id="analysis" aria-labelledby="analysis-h">
+    <div class="trends-head">
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <h2 id="analysis-h">Digging deeper</h2>
+        <span class="muted">Patterns across the whole record since July 2020. Click a bar, number or name to see the items behind it.</span>
+      </div>
+    </div>
+    <p class="empty" id="analysis-status">Loading the analysis…</p>
+
+    <figure class="chart full" id="long-trends" hidden>
+      <figcaption class="cap-row">
+        <span style="display:flex;flex-direction:column;gap:4px">
+          <span class="t lab">The long view<button type="button" class="tip" data-tip="an_trends" aria-label="About this chart">i</button></span>
+          <span class="s">Hatched bars are partial periods (the record starts in July 2020, and the current period isn't over).</span>
+        </span>
+        <span class="toggle" role="group" aria-label="Group by">
+          <button type="button" data-span="years" aria-pressed="true">By year</button>
+          <button type="button" data-span="terms" aria-pressed="false">By Council term</button>
+        </span>
+      </figcaption>
+      <div class="metric-chips" id="metric-chips" role="group" aria-label="What to show"></div>
+      <div class="lt-chart" id="lt-chart"></div>
+      <div class="lt-topics">
+        <span class="t lab" style="font-size:15px">Topics over time<button type="button" class="tip" data-tip="an_topic_grid" aria-label="About this table">i</button></span>
+        <div class="tablebox"><table class="grid-table" id="topic-grid"></table></div>
+      </div>
+    </figure>
+
+    <div class="charts top">
+      <figure class="chart" id="time-to-pass" hidden>
+        <figcaption>
+          <span class="t lab">How long legislation takes<button type="button" class="tip" data-tip="an_timing" aria-label="About these numbers">i</button></span>
+          <span class="s">From first appearance on an agenda to the final Council vote.</span>
+        </figcaption>
+        <div class="member-stats" id="timing-tiles"></div>
+        <div class="range-list" id="timing-committees"></div>
+        <div class="year-chart" id="timing-years"></div>
+      </figure>
+
+      <figure class="chart" id="stuck" hidden>
+        <figcaption>
+          <span class="t lab">Still waiting<button type="button" class="tip" data-tip="an_stuck" aria-label="About this list">i</button></span>
+          <span class="s" id="stuck-sub"></span>
+        </figcaption>
+        <div class="stuck-where" id="stuck-where" role="group" aria-label="Filter by where items are waiting"></div>
+        <ol class="stuck-list" id="stuck-list"></ol>
+        <button type="button" class="more" id="stuck-more" hidden>Show more</button>
+      </figure>
+    </div>
+
+    <figure class="chart full" id="lobbying" hidden>
+      <figcaption class="cap-row">
+        <span style="display:flex;flex-direction:column;gap:4px">
+          <span class="t lab">Lobbyists and the legislation around them<button type="button" class="tip" data-tip="an_lobby" aria-label="About this table">i</button></span>
+          <span class="s" id="lobby-sub"></span>
+        </span>
+        <span class="mini-bars" id="lobby-years" role="img"></span>
+      </figcaption>
+      <div class="tablebox">
+        <table class="lobby-table">
+          <thead><tr>
+            <th scope="col">Client</th>
+            <th scope="col">Registered lobbyists</th>
+            <th scope="col" class="num">Registrations</th>
+            <th scope="col" class="num"><span class="lab end">Later legislation naming client<button type="button" class="tip" data-tip="an_lobby_mentions" aria-label="About this column">i</button></span></th>
+            <th scope="col">Most recent of those</th>
+          </tr></thead>
+          <tbody id="lobby-rows"></tbody>
+        </table>
+      </div>
+      <button type="button" class="more" id="lobby-more" hidden>Show more clients</button>
+      <span class="s muted small">A name match is a starting point for reading the record, not proof that a lobbyist worked on an item.</span>
+    </figure>
+
+    <figure class="chart full" id="committees" hidden>
+      <figcaption>
+        <span class="t lab">Committee workload, last 12 months<button type="button" class="tip" data-tip="an_committees" aria-label="About this table">i</button></span>
+        <span class="s">Click a committee to see what it took up.</span>
+      </figcaption>
+      <div class="tablebox">
+        <table class="committee-table">
+          <thead><tr>
+            <th scope="col">Committee</th>
+            <th scope="col" class="num">Meetings</th>
+            <th scope="col" class="num">Items</th>
+            <th scope="col" style="width:22%"><span class="lab">Went on to Council<button type="button" class="tip" data-tip="an_to_council" aria-label="About this column">i</button></span></th>
+            <th scope="col" class="num"><span class="lab end">Typical days in committee<button type="button" class="tip" data-tip="an_stay" aria-label="About this column">i</button></span></th>
+            <th scope="col" class="num col-length"><span class="lab end">Typical meeting<button type="button" class="tip" data-tip="an_length" aria-label="About this column">i</button></span></th>
+          </tr></thead>
+          <tbody id="committee-rows"></tbody>
+        </table>
+      </div>
+      <details class="past-committees" id="past-committees" hidden><summary>Committees that haven't met in the last 12 months</summary><ul id="past-committee-list"></ul></details>
     </figure>
   </section>
 

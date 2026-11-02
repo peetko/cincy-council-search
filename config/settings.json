@@ -29,6 +29,17 @@
   "_skip": "Agenda/minutes lines that are not real items: ALL-CAPS section headers with no file number (ROLL CALL, AGENDA, MS. KEARNEY) are always skipped; lines matching this regex are skipped too.",
   "skip_titles_regex": "^(council observed a moment|there being no objection|no announcements|the meeting (was )?adjourned|pledge of allegiance)",
 
+  "_terms": "Council terms for the long-term trends view (Cincinnati elects all nine members every two years).",
+  "council_terms": [
+    {"label": "2018–21", "start": "2018-01-01", "end": "2021-12-31"},
+    {"label": "2022–23", "start": "2022-01-01", "end": "2023-12-31"},
+    {"label": "2024–25", "start": "2024-01-01", "end": "2025-12-31"},
+    {"label": "2026–27", "start": "2026-01-01", "end": "2027-12-31"}
+  ],
+
+  "_stuck_days": "An item counts as 'stuck in committee' when it was referred and hasn't come back for this many days.",
+  "stuck_days": 90,
+
   "_refresh": "Each run re-checks meetings changed since the last run, plus every meeting in this window (days back / days ahead).",
   "refresh_days_back": 45,
   "refresh_days_ahead": 30

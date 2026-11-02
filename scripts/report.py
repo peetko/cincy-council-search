@@ -92,6 +92,28 @@ def main():
         k = q(f"SELECT COUNT(*) FROM items WHERE {col} <> ''")[0][0]
         print(f"  {col:<12} {k / n:.0%} of {n} items")
 
+    print("\n== Analysis inputs ==")
+    print("  sample lobbyist registration titles:")
+    for (t,) in q("""SELECT title FROM items WHERE title LIKE 'REGISTRATION%' OR title LIKE '%Legislative Agent%'
+                     ORDER BY date DESC LIMIT 4"""):
+        print("    - " + (t or "")[:200])
+    print("  sample meeting start/end notes:")
+    for (t,) in q("""SELECT COALESCE(NULLIF(minutes_note, ''), title) FROM items WHERE is_council = 0
+                     AND (title LIKE '%began%' OR title LIKE '%called to order%' OR minutes_note LIKE '%began%'
+                          OR minutes_note LIKE '%called to order%' OR title LIKE '%adjourn%' OR minutes_note LIKE '%adjourn%')
+                     ORDER BY date DESC LIMIT 4"""):
+        print("    - " + (t or "")[:200])
+    an = os.path.join(os.path.dirname(os.path.abspath(args.db)), "analysis.json")
+    if os.path.exists(an):
+        a = json.load(open(an))
+        lob, tim, com = a["lobbying"], a["timing"], a["committees"]
+        print(f"  registrations: {lob['registrations']} found, {lob['parsed']} with a client name, {lob['clients_total']} clients")
+        print(f"  stuck items: {tim['stuck_total']}; timing medians: " +
+              ", ".join(f"{k} {v['median']}d (n={v['n']})" for k, v in tim["by_kind"].items() if v))
+        print(f"  meeting lengths parsed: {com['length_parsed']}")
+        if lob["registrations"] and lob["parsed"] < lob["registrations"] * 0.6:
+            warnings.append("Fewer than 60% of lobbyist registrations had a client name in parentheses - check CLIENT_RX in build_analysis.py.")
+
     if warnings:
         print("\nWARNINGS:")
         for w in warnings:
