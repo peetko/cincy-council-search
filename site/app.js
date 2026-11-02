@@ -1422,6 +1422,14 @@
       if (view === "search") search(); else updateHome();  // opened on another page: don't jump to results
       setTimeout(() => { if (!analysisLoading) analysisLoading = loadAnalysis(); }, 1500);  // for the home-card teaser
       docsDb().then(() => { $("docs-toggle-wrap").hidden = !docsAvailable; }).catch(() => {});
+      // Say how far the collection has got, in the tooltip.
+      fetch("data/docs-stats.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null)).then((ds) => {
+        if (!ds || !ds.total || !GLOSSARY.docs_search) return;
+        const pct = Math.round((ds.checked / ds.total) * 100);
+        const note = pct >= 99 ? " All legislation has been checked; some has no readable text."
+          : ` So far ${ds.checked.toLocaleString()} of ${ds.total.toLocaleString()} pieces of legislation (${pct}%) have been checked, and ${ds.with_text.toLocaleString()} have full text.`;
+        GLOSSARY.docs_search = [GLOSSARY.docs_search[0], GLOSSARY.docs_search[1].replace(/ This is still being filled in.*$/, pct >= 99 ? note : " This is still being filled in, newest legislation first." + note)];
+      }).catch(() => {});
       renderUpcoming().catch((e) => console.error(e));
     } catch (e) {
       console.error(e);

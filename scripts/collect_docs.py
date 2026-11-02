@@ -24,6 +24,7 @@ import argparse
 import concurrent.futures
 import datetime as dt
 import io
+import json
 import os
 import re
 import shutil
@@ -317,6 +318,12 @@ def main():
         if names:
             top = sorted(names.items(), key=lambda kv: -kv[1])[:15]
             print(f"Attachment names {kind} (# = any number): " + "; ".join(f"{n} ({c})" for n, c in top))
+
+    # Progress, for the note in the site's tooltip.
+    ok = docs.execute("SELECT COUNT(*) FROM docs WHERE status = 'ok'").fetchone()[0]
+    checked = docs.execute("SELECT COUNT(*) FROM docs").fetchone()[0]
+    with open(os.path.join(os.path.dirname(docs_path), "docs-stats.json"), "w") as f:
+        json.dump({"with_text": ok, "checked": checked, "total": total, "updated": today}, f)
 
     # Rebuild the full-text index and compact the file for the website.
     docs.executescript("DROP TABLE IF EXISTS docs_fts;" + FTS)
