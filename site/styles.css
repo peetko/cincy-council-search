@@ -78,7 +78,7 @@ h1 { margin: 0; font-size: 34px; line-height: 1.15; font-weight: 800; letter-spa
 
 /* ---------- main ---------- */
 main { padding-top: 28px; padding-bottom: 56px; display: flex; flex-direction: column; gap: 40px; }
-.filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(122px, 1fr)); gap: 12px; align-items: end; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 196px), 1fr)); gap: 12px 14px; align-items: end; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
 .filters .f { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .filters .lab { display: flex; align-items: center; gap: 2px; min-height: 24px; }
 .filters label { font-size: 12px; font-weight: 700; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.05em; }
@@ -281,3 +281,9 @@ details.timeline li.more-steps { display: block; color: var(--ink-3); font-style
 .hood-row .bar { display: block; height: 12px; }
 .hood-row .bar span { display: block; height: 100%; background: var(--series-cur); border-radius: 0 4px 4px 0; min-width: 3px; }
 .hood-row .v { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* ---------- active filters ---------- */
+.filters select.active { border-color: var(--navy); background-color: #eaf0fb; color: var(--navy); font-weight: 700; box-shadow: inset 0 0 0 1px var(--navy); }
+.filters .f.active label { color: var(--navy); }
+.filters .f.active .lab::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--red); margin-right: 4px; flex: 0 0 auto; }
+.filters .reset.active { color: var(--red); text-decoration: underline; }

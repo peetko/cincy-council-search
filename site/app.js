@@ -764,8 +764,25 @@
   }
   const anyFilter = () => [...FILTERS, ...FOCUS].some((k) => state[k]);
 
+  // Highlight the filters that are shaping the current results.
+  function markActiveFilters() {
+    let n = 0;
+    FILTERS.forEach((k) => {
+      const el = $("f-" + k);
+      if (!el) return;
+      const on = !!state[k];
+      n += on;
+      el.classList.toggle("active", on);
+      el.closest(".f").classList.toggle("active", on);
+    });
+    const reset = document.querySelector(".filters .reset");
+    reset.textContent = n ? `Clear ${n} filter${n === 1 ? "" : "s"}` : "Clear filters";
+    reset.classList.toggle("active", n > 0);
+  }
+
   function search() {
     renderMember();
+    markActiveFilters();
     state.q = $("q").value;
     state.offset = 0;
     writeUrl();
