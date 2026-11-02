@@ -40,6 +40,10 @@
 
   "_stuck_days": "An item counts as 'stuck in committee' when it was referred and hasn't come back for this many days.",
   "stuck_days": 90,
+  "_docs": "Full text of legislation: max characters kept per document, max scanned pages read with OCR, minutes per daily run.",
+  "doc_max_chars": 60000,
+  "ocr_max_pages": 15,
+  "docs_minutes_per_run": 25,
 
   "_refresh": "Each run re-checks meetings changed since the last run, plus every meeting in this window (days back / days ahead).",
   "refresh_days_back": 45,

@@ -8,6 +8,7 @@ stats and site can be exercised without touching the city's server:
 """
 import datetime as dt
 import http.server
+import io
 import json
 import random
 import re
@@ -58,6 +59,38 @@ def make_pdf(text):
     out += f"xref\n0 {len(objs) + 1}\n0000000000 65535 f \n" + "".join(f"{o:010d} 00000 n \n" for o in offsets)
     out += f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n"
     return out.encode("latin-1")
+
+
+_SCAN = None
+
+
+def make_scan():
+    """An image-only PDF (like a scanned, signed ordinance): text drawn as pixels, no text layer."""
+    global _SCAN
+    if _SCAN is None:
+        try:
+            import glob
+            from PIL import Image, ImageDraw, ImageFont
+            fonts = glob.glob("/usr/share/fonts/**/DejaVuSans.ttf", recursive=True) + glob.glob("/usr/share/fonts/**/Liberation*Regular.ttf", recursive=True)
+            font = ImageFont.truetype(fonts[0], 30) if fonts else ImageFont.load_default()
+            img = Image.new("L", (1700, 2200), 255)
+            d = ImageDraw.Draw(img)
+            lines = ["ORDINANCE NO. 123-2026", "", "AUTHORIZING the City Manager to accept a donation from the",
+                     "Greenacres Foundation for tree plantings in Northside and College Hill.",
+                     "", "WHEREAS, the urban forestry program plants street trees each spring; and",
+                     "WHEREAS, the donation of $25,000 supports the program;",
+                     "NOW, THEREFORE, BE IT ORDAINED by the Council of the City of Cincinnati:",
+                     "Section 1. The City Manager is authorized to accept the donation.",
+                     "Section 2. This ordinance shall take effect at the earliest time allowed by law.",
+                     "", "Passed: ____________          Mayor: ____________"]
+            for i, line in enumerate(lines):
+                d.text((120, 150 + i * 60), line, fill=0, font=font)
+            buf = io.BytesIO()
+            img.save(buf, "PDF", resolution=200)
+            _SCAN = buf.getvalue()
+        except Exception:
+            _SCAN = make_pdf("")
+    return _SCAN
 
 
 def make_docx(text):
@@ -267,7 +300,7 @@ class H(http.server.BaseHTTPRequestHandler):
             if name.endswith(".docx"):
                 data = make_docx(text)
             else:
-                data = make_pdf("" if name == "scan.pdf" else text)
+                data = make_scan() if name == "scan.pdf" else make_pdf(text)
             self.send_response(200)
             self.send_header("Content-Type", "application/octet-stream")
             self.send_header("Content-Length", str(len(data)))

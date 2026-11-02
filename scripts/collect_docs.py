@@ -13,7 +13,7 @@ Deliberately narrow, to keep the site free, fast and focused:
   - only ordinances, resolutions and motions (not presentations, reports, appointments);
   - only the legislation document itself: exhibits, maps, contracts, leases, budgets,
     presentations and public comments/letters are skipped;
-  - scanned PDFs with no text layer are skipped (no OCR);
+  - scanned PDFs with no text layer are read with OCR (tesseract), up to OCR_MAX_PAGES pages;
   - each document is capped at doc_max_chars.
 
 It works newest first and stops after --minutes, so the first backfill spreads over
@@ -21,11 +21,15 @@ several daily runs. Results (including "nothing found") are remembered, so each
 piece of legislation is only fetched again if it shows up on a new agenda.
 """
 import argparse
+import concurrent.futures
 import datetime as dt
 import io
 import os
 import re
+import shutil
 import sqlite3
+import subprocess
+import tempfile
 import time
 import urllib.request
 import zipfile
@@ -37,6 +41,8 @@ DOCS_DB = os.path.join(os.path.dirname(DEFAULT_DB), "docs.db")
 MAX_CHARS = int(SETTINGS.get("doc_max_chars", 60000))
 MAX_BYTES = 15 * 1024 * 1024
 MIN_CHARS = 300  # less than this = a scan, a cover page, or nothing useful
+OCR_MAX_PAGES = int(SETTINGS.get("ocr_max_pages", 15))
+OCR_AVAILABLE = bool(shutil.which("tesseract") and shutil.which("pdftoppm"))
 
 # Which attachment is "the legislation": its name says so, and it isn't supporting material.
 LEGIS_RX = re.compile(r"ordinance|resolution|motion|legislation|\bord\b|\bres\b|emergency|amended|substitute|version", re.I)
@@ -91,7 +97,7 @@ def rtf_to_text(rtf):
     return rtf.replace("{", "").replace("}", "")
 
 
-RULES_VERSION = "2"  # bump when the rules change, to re-check what was saved under older rules
+RULES_VERSION = "3"  # bump when the rules change, to re-check what was saved under older rules
 MARKER = re.compile(r"(?im)^\s*\.\.\s*(title|body|header|footer|recommendation|summary|end)\b[^\n]*$")
 
 
@@ -183,6 +189,27 @@ def note(kind, name):
     SEEN_NAMES[kind][name] = SEEN_NAMES[kind].get(name, 0) + 1
 
 
+def ocr_pdf(data):
+    """Read a scanned PDF with OCR: render pages to images (pdftoppm), then tesseract, a few
+    pages at a time in parallel. Returns '' if the tools aren't installed."""
+    if not OCR_AVAILABLE:
+        return ""
+    with tempfile.TemporaryDirectory() as tmp:
+        pdf = os.path.join(tmp, "doc.pdf")
+        with open(pdf, "wb") as f:
+            f.write(data)
+        subprocess.run(["pdftoppm", "-r", "200", "-gray", "-png", "-l", str(OCR_MAX_PAGES), pdf, os.path.join(tmp, "p")],
+                       check=True, timeout=300, capture_output=True)
+        pages = sorted(x for x in os.listdir(tmp) if x.endswith(".png"))
+        env = {**os.environ, "OMP_THREAD_LIMIT": "1"}
+        def read(page):
+            r = subprocess.run(["tesseract", os.path.join(tmp, page), "-", "-l", "eng", "--psm", "1"],
+                               capture_output=True, timeout=180, env=env)
+            return r.stdout.decode("utf-8", "ignore")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count() or 2) as pool:
+            return "\n\n".join(pool.map(read, pages))
+
+
 def fetch_one(matter_id, title=""):
     """-> (status, source, name, url, text)"""
     text = stored_text(matter_id, title)
@@ -201,8 +228,14 @@ def fetch_one(matter_id, title=""):
     if data is None:
         return "none", "attachment", a.get("MatterAttachmentName"), url, None
     text = clean(file_text(data))
-    if len(text) < MIN_CHARS:
+    if len(text) < MIN_CHARS and data.startswith(b"%PDF"):
         note("scanned (no text layer)", a.get("MatterAttachmentName"))
+        started = time.time()
+        text = clean(ocr_pdf(data))
+        STATS["OCR seconds"] = round(STATS.get("OCR seconds", 0) + time.time() - started)
+        if len(text) >= MIN_CHARS:
+            return "ok", "ocr", a.get("MatterAttachmentName"), url, text
+    if len(text) < MIN_CHARS:
         return "scan", "attachment", a.get("MatterAttachmentName"), url, None
     return "ok", "attachment", a.get("MatterAttachmentName"), url, text
 
@@ -241,12 +274,13 @@ def main():
     docs.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)")
     row = docs.execute("SELECT value FROM meta WHERE key = 'rules_version'").fetchone()
     if not row or row[0] != RULES_VERSION:
-        n = docs.execute("DELETE FROM docs WHERE NOT (status = 'ok' AND source = 'attachment')").rowcount
+        n = docs.execute("DELETE FROM docs WHERE NOT (status = 'ok' AND source IN ('attachment', 'ocr'))").rowcount
         docs.execute("INSERT OR REPLACE INTO meta VALUES ('rules_version', ?)", (RULES_VERSION,))
         docs.commit()
         print(f"Collection rules changed: {n} saved results will be fetched again.")
     queue, total = todo(main_db, docs, today)
-    print(f"{len(queue)} of {total} pieces of legislation need their full text fetched.")
+    print(f"{len(queue)} of {total} pieces of legislation need their full text fetched."
+          + ("" if OCR_AVAILABLE else " (OCR tools not installed: scanned documents will be skipped.)"))
 
     deadline = time.time() + args.minutes * 60
     done, counts, errors_in_a_row = 0, {}, 0

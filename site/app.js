@@ -416,7 +416,9 @@
           const [doc] = await docsQuery("SELECT text, source, name, url FROM docs WHERE matter_id = ?", [Number(btn.dataset.doc)]);
           if (doc && doc.text) {
             const paras = doc.text.split(/\n{2,}/).map((t) => t.replace(/\s*\n\s*/g, " ").trim()).filter(Boolean);
-            const from = doc.source === "attachment" ? `the attached document${doc.name ? " “" + esc(doc.name) + "”" : ""}` : "Legistar's legislation text";
+            const named = doc.name ? " “" + esc(doc.name) + "”" : "";
+            const from = doc.source === "ocr" ? `a scanned copy of the attached document${named}, read by text-recognition software, so expect some errors`
+              : doc.source === "attachment" ? `the attached document${named}` : "Legistar's legislation text";
             full.querySelector(".title-text").outerHTML = `<div class="doctext">${paras.map((t) => `<p>${highlightTerms(t)}</p>`).join("")}</div>
               <span class="muted small">Full text from ${from}${doc.url ? ` (<a href="${esc(doc.url)}" target="_blank" rel="noopener">original</a>)` : ""}. Long documents are shortened; the legislation page has the official version.</span>`;
           }
