@@ -424,3 +424,9 @@ body.inner header.site .wrap { padding-bottom: 24px; gap: 18px; }
 .lifecycle li span { font-size: 14px; line-height: 1.45; color: var(--ink-2); }
 #analysis { border-top: 0; padding-top: 0; }
 .passed-n { display: block; font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+.read-more { align-self: flex-start; font-size: 14px; margin-top: -4px; }
+.fulltext { display: flex; flex-direction: column; gap: 10px; }
+.fulltext .notes { display: flex; flex-direction: column; gap: 8px; border-left: 3px solid var(--badge); padding-left: 12px; font-size: 14px; }
+.fulltext .notes b { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-2); }
+.fulltext .note { display: flex; flex-direction: column; gap: 2px; }
+.fulltext .note p { font-size: 14px; }

@@ -312,6 +312,46 @@
     return esc(text).replace(/\u0001/g, "<mark>").replace(/\u0002/g, "</mark>");
   }
 
+  // Highlight the searched words in full text (the database's own highlighting only covers snippets).
+  function highlightTerms(text) {
+    const terms = [];
+    (state.q || "").replace(/\btitle:/gi, " ").replace(/"([^"]*)"|(\S+)/g, (_, ph, w) => {
+      const words = (ph || w || "").match(/[\p{L}\p{N}]+/gu) || [];
+      if (ph && words.length) terms.push(words.map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\W+"));
+      else words.forEach((x) => { if (x.length > 1 || /\d/.test(x)) terms.push(x.replace(/(ing|ed|es|s)$/i, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&") || x); });
+    });
+    let html = esc(text);
+    if (!terms.length) return html;
+    const rx = new RegExp(`\\b(?:${terms.join("|")})[\\p{L}\\p{N}]*`, "giu");
+    return html.replace(rx, (m) => `<mark>${m}</mark>`);
+  }
+  const isCut = (snip, title) => snip ? /^\s*…|…\s*$/.test(snip) || (title || "").length > snip.length + 40 : (title || "").length > 420;
+
+  // "Show full text": the whole title, plus any notes the minutes recorded at each step (fetched on demand).
+  async function toggleFullText(btn) {
+    const card = btn.closest("article.result");
+    const short = card.querySelector("p.snip"), full = card.querySelector(".fulltext");
+    const open = full.hidden;
+    full.hidden = !open; short.hidden = open;
+    btn.textContent = open ? "Show less" : "Show full text";
+    btn.setAttribute("aria-expanded", String(open));
+    if (open && !full.dataset.loaded) {
+      full.dataset.loaded = "1";
+      try {
+        const ids = btn.dataset.ids.split(",").map(Number);
+        const d = await db();
+        const rows = await d.query(`SELECT date, body, minutes_note, agenda_note, action_text FROM items WHERE item_id IN (${ids.map(() => "?").join(",")})
+          AND (COALESCE(minutes_note, '') <> '' OR COALESCE(agenda_note, '') <> '' OR COALESCE(action_text, '') <> '') ORDER BY date`, ids);
+        if (rows.length) {
+          full.insertAdjacentHTML("beforeend", `<div class="notes"><b>Notes from the agendas and minutes</b>${rows.map((r) =>
+            `<div class="note"><span class="muted small">${esc(fmtDate(r.date))} · ${esc(r.body)}</span>${[r.agenda_note, r.action_text, r.minutes_note].filter(Boolean)
+              .filter((x, i, a) => a.indexOf(x) === i).map((x) => `<p>${highlightTerms(x)}</p>`).join("")}</div>`).join("")}</div>`);
+        }
+      } catch (e) { console.error(e); }
+    }
+    if (!open) card.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
   const outcomeTipFor = (r) => /^Passed as emergency|^Emergency clause/.test(r.outcome || "") ? "passed_emergency"
     : /^Three readings/.test(r.outcome || "") ? "three_readings"
     : (GLOSSARY[r.outcome_cat] ? r.outcome_cat : "outcome");
@@ -374,7 +414,9 @@
         ${main.matter_file ? `<span class="file mono" tabindex="0" data-tip="file_number" style="cursor:help">${esc(main.matter_file)}</span>` : ""}
         ${head.outcome ? `<span class="outcome" tabindex="0" data-tip="${outcomeTipFor(head)}">${icon}${esc(head.outcome)}${steps.length > 1 ? ` · ${esc(fmtDate(head.date))}` : ""}</span>` : ""}
       </div>
-      <p>${highlight(snip, main.title)}</p>
+      <p class="snip">${highlight(snip, main.title)}</p>
+      ${isCut(snip, main.title) ? `<div class="fulltext" hidden><p>${highlightTerms(main.title || "")}</p></div>
+      <button type="button" class="linkish read-more" data-fulltext data-ids="${steps.map((r) => r.item_id).join(",")}" aria-expanded="false">Show full text</button>` : ""}
       ${dissentBox(decisive)}
       <div class="meta">${meta.join("")}</div>
       ${timeline}
@@ -931,6 +973,8 @@
         $("member-card").scrollIntoView({ behavior: "smooth", block: "start" });
         return;
       }
+      const ft = e.target.closest("[data-fulltext]");
+      if (ft) { toggleFullText(ft); return; }
       const cp = e.target.closest("[data-copy]");
       if (cp) { copyText(cp.dataset.copy, cp); return; }
       const mt = e.target.closest("[data-meeting]");
