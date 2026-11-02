@@ -17,6 +17,21 @@
   const FOCUS = ["file", "item", "meeting", "member"];  // set by links (a permalink or a meeting), not by dropdowns
   let stats = null;
   let dbPromise = null;
+  let dbVersion = null, lastVersionCheck = 0;
+
+  // Before searching, make sure the database hasn't been republished since this page opened
+  // (a tiny request, at most once a minute). Mixing old and new pieces of the file can give
+  // errors or silently empty results, so reconnect when the version changes.
+  async function ensureFreshDb() {
+    if (!dbPromise || Date.now() - lastVersionCheck < 60000) return;
+    lastVersionCheck = Date.now();
+    try {
+      const r = await fetch("data/db-info.json", { cache: "no-cache" });
+      if (!r.ok) return;
+      const info = await r.json();
+      if (dbVersion && info.version && info.version !== dbVersion) await reconnect();
+    } catch (e) { /* offline or similar: carry on with what we have */ }
+  }
 
   // ------------------------------------------------------------- helpers
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -57,6 +72,8 @@
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null)
         .then((info) => {
+          dbVersion = info && info.version;
+          lastVersionCheck = Date.now();
           const cacheBust = (info && info.version) || (stats && stats.updated_at) || String(Date.now());
           const config = info
             ? { serverMode: "chunked", requestChunkSize: 65536, databaseLengthBytes: info.databaseLengthBytes,
@@ -151,6 +168,7 @@
     $("results").classList.add("busy");
     if (append) { $("more").textContent = "Loading…"; }
     else { $("res-h").innerHTML = `<span class="searching"><span class="spinner" aria-hidden="true"></span>Searching…</span>`; $("timing").textContent = ""; }
+    await ensureFreshDb();
     try {
       try { await runSearchInner(append); }
       catch (e) {
