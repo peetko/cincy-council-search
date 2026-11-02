@@ -212,7 +212,8 @@ def lists(con):
     voters = [r[0] for r in con.execute("""
         SELECT v.person FROM votes v JOIN items i ON i.item_id = v.item_id
         WHERE i.is_final = 1 GROUP BY v.person ORDER BY MAX(i.date) DESC, v.person""")]
-    return {"bodies": bodies, "sponsors": sponsors, "departments": list(DEPT_RX), "voters": voters}
+    return {"bodies": bodies, "sponsors": sponsors, "departments": list(DEPT_RX), "voters": voters,
+            "topics": list(TOPIC_RX)}
 
 
 def main():
@@ -242,6 +243,7 @@ def main():
     for key in ("month", "quarter", "year"):
         stats["periods"][key] = {
             "long": sp[key]["long"], "short": sp[key]["short"],
+            "cur": sp[key]["cur"], "prev": sp[key]["prev"],
             "topics": topics(con, sp[key]),
             **members(con, sp[key]),
         }

@@ -11,8 +11,8 @@
 
   const PAGE = 20;
   const $ = (id) => document.getElementById(id);
-  const state = { q: "", kind: "", body: "", sponsor: "", dept: "", outcome: "", vote: "", date: "", sort: "newest", offset: 0, period: "year" };
-  const FILTERS = ["kind", "body", "sponsor", "dept", "outcome", "vote", "date"];
+  const state = { q: "", kind: "", body: "", sponsor: "", dept: "", outcome: "", vote: "", topic: "", date: "", sort: "newest", offset: 0, period: "year" };
+  const FILTERS = ["kind", "body", "sponsor", "dept", "topic", "outcome", "vote", "date"];
   let stats = null;
   let dbPromise = null;
 
@@ -79,6 +79,7 @@
     if (state.sponsor) { where.push("(f.sponsors LIKE ? OR f.mover = ?)"); args.push("%" + state.sponsor + "%", state.sponsor); }
     if (state.dept) { where.push("f.departments LIKE ?"); args.push("%" + state.dept + "%"); }
     if (state.outcome) { where.push("f.outcome_cat = ?"); args.push(state.outcome); }
+    if (state.topic) { where.push("f.topics LIKE ?"); args.push("%" + state.topic + "%"); }
     if (state.vote === "@split") where.push("f.dissent <> ''");
     else if (state.vote) { where.push("f.dissent LIKE ?"); args.push("%" + state.vote + "|%"); }
     const t = today();
@@ -90,7 +91,9 @@
       upcoming: [t, null], "90d": [addDays(t, -90), t], "12m": [addDays(t, -365), t],
       ytd: [year + "-01-01", t], lastyear: [(year - 1) + "-01-01", (year - 1) + "-12-31"],
     };
-    const r = ranges[state.date];
+    // Custom ranges look like "2026-06-01..2026-06-30" (set by clicking a chart).
+    const custom = /^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$/.exec(state.date || "");
+    const r = custom ? [custom[1], custom[2]] : ranges[state.date];
     if (r) {
       if (r[0]) { where.push("f.date >= ?"); args.push(r[0]); }
       if (r[1]) { where.push("f.date <= ?"); args.push(r[1]); }
@@ -193,9 +196,10 @@
 
   function renderResult(r) {
     const icon = { passed: ICON_CHECK, failed: ICON_X, referred: ICON_ARROW, scheduled: ICON_CAL }[r.outcome_cat] || "";
-    const emergency = r.outcome_cat === "passed" && /emergency/i.test(r.action || "");
-    const outcomeLabel = emergency ? String(r.outcome).replace(/^Passed/, "Passed as emergency") : r.outcome;
-    const outcomeTip = emergency ? "passed_emergency" : (GLOSSARY[r.outcome_cat] ? r.outcome_cat : "outcome");
+    const outcomeLabel = r.outcome;
+    const outcomeTip = /^Passed as emergency|^Emergency clause/.test(r.outcome || "") ? "passed_emergency"
+      : /^Three readings/.test(r.outcome || "") ? "three_readings"
+      : (GLOSSARY[r.outcome_cat] ? r.outcome_cat : "outcome");
     let dissent = "";
     if (r.dissent) {
       const no = [], ab = [];
@@ -269,7 +273,12 @@
     $("kpi-h").textContent = `${stats.today.slice(0, 4)} so far`;
     const TIPS = { "Ordinances passed": "kpi_ordinances", "Resolutions adopted": "kpi_resolutions", "Motions introduced": "kpi_motions",
       "Meetings with minutes": "kpi_meetings", "Average members present": "kpi_present", "Unanimous final votes": "kpi_unanimous" };
-    $("kpi-list").innerHTML = stats.kpis.map((k) => `<div class="card kpi">
+    const y = stats.today.slice(0, 4);
+    const ytd = { from: y + "-01-01", to: stats.today, label: `${y} so far` };
+    const GO = { "Ordinances passed": { kind: "ordinance", body: "@council", outcome: "passed", ...ytd },
+      "Resolutions adopted": { kind: "resolution", body: "@council", outcome: "passed", ...ytd },
+      "Motions introduced": { kind: "motion", body: "@council", ...ytd } };
+    $("kpi-list").innerHTML = stats.kpis.map((k) => `<div class="card kpi${GO[k.label] ? " go" : ""}"${GO[k.label] ? ` data-go='${esc(JSON.stringify(GO[k.label]))}' title="Click to see them"` : ""}>
       <span class="l">${esc(k.label)}${TIPS[k.label] ? `<button type="button" class="tip" data-tip="${TIPS[k.label]}" aria-label="About ${esc(k.label.toLowerCase())}">i</button>` : ""}</span>
       <span class="v">${esc(k.value)}</span>
       <span class="d">${k.arrow ? `<span aria-hidden="true">${k.arrow}</span> ${k.arrow === "▲" ? "Up" : "Down"} ` : ""}${esc(k.delta)}</span>
@@ -281,15 +290,30 @@
     return steps.find((s) => s >= v) || Math.ceil(v / 100) * 100;
   }
 
+  const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  // First and last day of a month; for the current month, stop at the same day as today.
+  function monthRange(year, month, soFar) {
+    const mm = String(month).padStart(2, "0");
+    let end = new Date(year, month, 0).getDate();
+    if (soFar) end = Math.min(end, Number(today().slice(8, 10)));
+    return [`${year}-${mm}-01`, `${year}-${mm}-${String(end).padStart(2, "0")}`];
+  }
+
   function renderMonthly() {
     const m = stats.monthly;
     const top = niceMax(Math.max(1, ...m.cur, ...m.prev));
     $("month-legend").innerHTML = `<span><i style="background:var(--series-cur)"></i>${m.year}</span><span><i style="background:var(--series-prev)"></i>${m.year - 1}</span>`;
     $("month-y").innerHTML = [top, Math.round(top * 2 / 3), Math.round(top / 3), 0].map((v) => `<span>${v}</span>`).join("");
     const grid = `<div class="g" style="top:0"></div><div class="g" style="top:33.33%"></div><div class="g" style="top:66.66%"></div><div class="g base" style="bottom:0"></div>`;
-    const cols = m.labels.map((l, i) => `<div class="col" title="${l}: ${m.year} — ${m.cur[i]}, ${m.year - 1} — ${m.prev[i]}${i === m.labels.length - 1 ? " (same days so far)" : ""}">
-        <div style="height:${(m.prev[i] / top) * 100}%;background:var(--series-prev)"></div>
-        <div style="height:${(m.cur[i] / top) * 100}%;background:var(--series-cur)"></div></div>`).join("");
+    const last = m.labels.length - 1;
+    const bar = (year, i, n, color) => {
+      const [a, b] = monthRange(year, i + 1, i === last);
+      const name = `${MONTH_NAMES[i]} ${year}`;
+      return `<button type="button" class="bar" data-go='${JSON.stringify({ kind: "ordinance", body: "@council", outcome: "passed", from: a, to: b, label: name })}'
+        title="${name}: ${n} ordinance${n === 1 ? "" : "s"} passed${i === last ? " (so far)" : ""}. Click to see them."
+        aria-label="${name}: ${n} ordinances passed. Show them."><span style="height:${(n / top) * 100}%;background:${color}"></span></button>`;
+    };
+    const cols = m.labels.map((l, i) => `<div class="col">${bar(m.year - 1, i, m.prev[i], "var(--series-prev)")}${bar(m.year, i, m.cur[i], "var(--series-cur)")}</div>`).join("");
     $("month-plot").innerHTML = grid + `<div class="cols" role="img" aria-label="${esc(m.labels.map((l, i) => `${l}: ${m.cur[i]} vs ${m.prev[i]}`).join("; "))}">${cols}</div>`;
     $("month-x").innerHTML = m.labels.map((l) => `<span>${l}</span>`).join("");
     // Label past months with no passage votes in either year (usually Council's July summer break).
@@ -297,7 +321,7 @@
     if (empties.length) {
       const cols = $("month-plot").querySelectorAll(".col");
       empties.forEach((i) => {
-        cols[i].innerHTML = `<span class="novotes" tabindex="0" data-tip="no_votes_month">No votes</span>`;
+        cols[i].innerHTML = `<span class="novotes" tabindex="0" data-tip="no_votes_month">No votes</span>`;  // nothing to click
       });
     }
   }
@@ -321,10 +345,12 @@
       const style = pos ? `left:50%;width:${w}%;background:var(--series-cur);border-radius:0 4px 4px 0`
                         : `right:50%;width:${w}%;background:var(--series-down);border-radius:4px 0 0 4px`;
       const label = isNew ? "new" : (pos ? "+" : "−") + Math.abs(t.change) + "%";
-      return `<div class="topic" title="${esc(t.name)}: ${t.cur} items vs ${t.prev} a year earlier">
+      const go = { topic: t.name, from: p.cur[0], to: p.cur[1], label: p.short.split(" vs.")[0] };
+      return `<button type="button" class="topic" data-go='${esc(JSON.stringify(go))}' title="${esc(t.name)}: ${t.cur} items vs ${t.prev} a year earlier. Click to see this period's items."
+        aria-label="${esc(t.name)}, ${label}. Show items.">
         <span class="n">${esc(t.name)}</span>
-        <div class="track"><div class="mid"></div><div class="bar" style="${style}"></div></div>
-        <span class="v">${label}</span></div>`;
+        <span class="track"><span class="mid"></span><span class="bar" style="${style}"></span></span>
+        <span class="v">${label}</span></button>`;
     }).join("") : `<div class="empty">Not enough items yet in this period to compare. Try Quarter or Year.</div>`;
 
     // Members
@@ -354,6 +380,7 @@
     add("f-sponsor", stats.lists.sponsors);
     add("f-dept", stats.lists.departments);
     add("f-vote", stats.lists.voters || [], (v) => "No or abstain: " + v);
+    add("f-topic", stats.lists.topics || []);
     const when = stats.updated_at ? new Date(stats.updated_at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : "—";
     $("updated").textContent = `Last updated ${when} · ${stats.meetings_indexed.toLocaleString()} meetings and ${stats.items_indexed.toLocaleString()} items indexed.`;
   }
@@ -420,11 +447,32 @@
 
   // ------------------------------------------------------------- state <-> URL
   const KEYS = ["q", ...FILTERS, "sort"];
+  // Make the dropdowns show the current filters; a custom date range gets its own option.
+  function syncFilterControls(dateLabel) {
+    const sel = $("f-date");
+    [...sel.options].filter((o) => o.dataset.custom).forEach((o) => o.remove());
+    if (/\.\./.test(state.date)) {
+      const [a, b] = state.date.split("..");
+      const o = document.createElement("option");
+      o.value = state.date; o.dataset.custom = "1";
+      o.textContent = dateLabel || `${fmtDate(a)} – ${fmtDate(b)}`;
+      sel.appendChild(o);
+    }
+    FILTERS.forEach((k) => {
+      const el = $("f-" + k);
+      if (!el) return;
+      if (state[k] && ![...el.options].some((o) => o.value === state[k])) {
+        const o = document.createElement("option"); o.value = o.textContent = state[k]; el.appendChild(o);
+      }
+      el.value = state[k];
+    });
+  }
+
   function readUrl() {
     const p = new URLSearchParams(location.search);
     KEYS.forEach((k) => { if (p.has(k)) state[k] = p.get(k); });
     $("q").value = state.q;
-    FILTERS.forEach((k) => { const el = $("f-" + k); if (el) el.value = state[k]; });
+    syncFilterControls();
   }
   function writeUrl() {
     const p = new URLSearchParams();
@@ -461,6 +509,18 @@
     document.addEventListener("click", (e) => {
       const v = e.target.closest("[data-votes]");
       if (v) showVotes(v.dataset.votes, v);
+      const g = e.target.closest("[data-go]");
+      if (g && !e.target.closest("button.tip")) {
+        const go = JSON.parse(g.dataset.go);
+        FILTERS.forEach((k) => { state[k] = ""; });
+        ["kind", "body", "sponsor", "dept", "topic", "outcome", "vote"].forEach((k) => { if (go[k]) state[k] = go[k]; });
+        if (go.from) state.date = `${go.from}..${go.to}`;
+        $("q").value = ""; state.q = "";
+        syncFilterControls(go.label);
+        search();
+        document.getElementById("res-h").scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
       const vb = e.target.closest("[data-vote]");
       if (vb) {
         const sel = $("f-vote");

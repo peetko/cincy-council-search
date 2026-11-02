@@ -40,14 +40,26 @@ def clean(s):
     return (s or "").strip()
 
 
-def outcome_for(item, date, today):
-    action = clean(item.get("EventItemActionName"))
-    passed = item.get("EventItemPassedFlag")
+def outcome_for(passed, action, is_council, date, today):
+    """Short outcome label + category. Only a full-Council final vote counts as 'passed';
+    procedural roll calls (suspending the three readings, the emergency clause) and committee
+    recommendations get their own labels so they aren't mistaken for passage."""
+    action = clean(action)
     low = action.lower()
+    if passed is not None and NOT_FINAL_RX.search(action):
+        nice = {"suspension of the three readings": "Three readings suspended",
+                "emergency clause to remain": "Emergency clause kept"}.get(low, action)
+        return (nice if passed == 1 else f"{nice} (failed)"), "procedural"
     if passed == 1:
+        if not is_council:
+            return (action or "Approved in committee"), "recommended"
+        if "emergency" in low:
+            return "Passed as emergency", "passed"
         return ("Adopted" if "adopt" in low else "Passed"), "passed"
     if passed == 0:
         return "Failed", "failed"
+    if "recommend" in low or "approve" in low and not is_council:
+        return action, "recommended"
     if "refer" in low:
         return "Referred to committee", "referred"
     if "hold" in low or "held" in low:
@@ -57,6 +69,10 @@ def outcome_for(item, date, today):
     if date >= today and not action:
         return "On upcoming agenda", "scheduled"
     return (action or "On agenda"), "other"
+
+
+def with_tally(outcome, cat, yes, no):
+    return f"{outcome} {yes}–{no}" if yes is not None and cat in ("passed", "failed", "procedural") else outcome
 
 
 def save_event(con, ev):
@@ -91,7 +107,7 @@ def save_items(con, ev, body, date, today, seen_at, stats):
         item_id = it["EventItemId"]
         keep.append(item_id)
         action = clean(it.get("EventItemActionName"))
-        outcome, cat = outcome_for(it, date, today)
+        outcome, cat = outcome_for(it.get("EventItemPassedFlag"), action, is_council, date, today)
         is_final = is_final_vote(is_council, it.get("EventItemPassedFlag"), action)
         text = " ".join([title, clean(it.get("EventItemMatterName")), clean(it.get("EventItemAgendaNote")),
                          clean(it.get("EventItemMinutesNote")), clean(it.get("EventItemActionText"))])
@@ -166,7 +182,7 @@ def save_votes(con, item_id):
         con.execute("UPDATE items SET yes_count = ?, no_count = ?, tally = ? WHERE item_id = ?",
                     (yes, no, f"{yes}–{no}", item_id))
         con.execute("UPDATE items SET outcome = outcome || ' ' || ? WHERE item_id = ? "
-                    "AND outcome_cat IN ('passed','failed')", (f"{yes}–{no}", item_id))
+                    "AND outcome_cat IN ('passed','failed','procedural')", (f"{yes}–{no}", item_id))
 
 
 def is_final_vote(is_council, passed, action):
@@ -185,6 +201,11 @@ def retag(con):
         print(f"Removed {len(noise)} section headers / boilerplate lines.")
     con.execute("UPDATE items SET matter_url = ? || '/gateway.aspx?M=L&ID=' || matter_id "
                 "WHERE matter_id IS NOT NULL", (SITE,))
+    today = dt.datetime.now(dt.timezone(dt.timedelta(hours=-5))).date().isoformat()
+    for r in con.execute("SELECT item_id, passed, action, is_council, date, yes_count, no_count FROM items").fetchall():
+        outcome, cat = outcome_for(r["passed"], r["action"], r["is_council"], r["date"] or "", today)
+        con.execute("UPDATE items SET outcome = ?, outcome_cat = ? WHERE item_id = ?",
+                    (with_tally(outcome, cat, r["yes_count"], r["no_count"]), cat, r["item_id"]))
     rows = con.execute("SELECT item_id, title, matter_name, agenda_note, minutes_note, action_text, "
                        "matter_type, is_council, passed, action FROM items").fetchall()
     for r in rows:

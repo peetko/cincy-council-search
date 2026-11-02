@@ -21,6 +21,9 @@ window.GLOSSARY = {
   referred: ["Referred to committee", "The mayor sends each new item to a committee. Ordinances, motions and legislative resolutions must win a majority there before the full Council votes. Many items on a Council agenda are only being referred that day."],
   held: ["Held", "The item was put off to a later meeting instead of being voted on."],
   filed: ["Filed", "Received for the record with no vote needed. This is common for reports, special-event permit applications and other FYI items."],
+  recommended: ["Recommended by committee", "A committee voted to send the item to full Council, usually with a recommendation to pass. The final vote happens later at Council."],
+  procedural: ["Procedural vote", "One of the extra roll calls an ordinance gets: suspending the three-readings rule (needs 7 votes) or keeping the emergency clause (needs 6). The vote that actually passes the ordinance is listed separately."],
+  topic_filter: ["Topic", "Items are tagged with topics by matching keywords (editable in config/topics.json), so a topic search is a helpful guide rather than an exact list."],
   scheduled: ["On an upcoming agenda", "Listed for a meeting that hasn't happened yet."],
 
   // ---- procedure

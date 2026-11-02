@@ -88,10 +88,15 @@
       <select id="f-dept" name="dept"><option value="">Any department</option></select>
     </div>
     <div class="f">
+      <span class="lab"><label for="f-topic">Topic</label><button type="button" class="tip" data-tip="topic_filter" aria-label="About topics">i</button></span>
+      <select id="f-topic" name="topic"><option value="">Any topic</option></select>
+    </div>
+    <div class="f">
       <span class="lab"><label for="f-outcome">Outcome</label><button type="button" class="tip" data-tip="outcome" aria-label="About outcomes">i</button></span>
       <select id="f-outcome" name="outcome">
         <option value="">Any outcome</option>
-        <option value="passed">Passed / adopted</option>
+        <option value="passed">Passed / adopted (final vote)</option>
+        <option value="recommended">Recommended by committee</option>
         <option value="failed">Failed</option>
         <option value="referred">Referred to committee</option>
         <option value="held">Held</option>
@@ -175,13 +180,13 @@
             <div class="xlabels" id="month-x"></div>
           </div>
         </div>
-        <span class="s muted" style="font-size:13px">Hover or tap a month for exact counts.</span>
+        <span class="s muted" style="font-size:13px">Hover for exact counts; click a bar to see those ordinances.</span>
       </figure>
 
       <figure class="chart">
         <figcaption>
           <span class="t lab">Topics coming up more — and less<button type="button" class="tip" data-tip="chart_topics" aria-label="About this chart">i</button></span>
-          <span class="s">Change in items tagged with each topic, <span id="period-short-1"></span></span>
+          <span class="s">Change in items tagged with each topic, <span id="period-short-1"></span>. Click a topic to see its items.</span>
         </figcaption>
         <div class="topics" id="topics"></div>
         <div class="topics-axis"><span>◀ less often</span><span>more often ▶</span></div>

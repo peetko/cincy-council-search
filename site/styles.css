@@ -76,7 +76,7 @@ h1 { margin: 0; font-size: 34px; line-height: 1.15; font-weight: 800; letter-spa
 
 /* ---------- main ---------- */
 main { padding-top: 28px; padding-bottom: 56px; display: flex; flex-direction: column; gap: 40px; }
-.filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 12px; align-items: end; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(122px, 1fr)); gap: 12px; align-items: end; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
 .filters .f { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .filters .lab { display: flex; align-items: center; gap: 2px; min-height: 24px; }
 .filters label { font-size: 12px; font-weight: 700; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.05em; }
@@ -145,15 +145,22 @@ figcaption .s { font-size: 13px; color: var(--ink-2); }
 .plot .g { position: absolute; left: 0; right: 0; border-top: 1px solid var(--grid); }
 .plot .g.base { border-top-color: var(--axis); }
 .plot .cols { position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: space-around; }
-.plot .col { height: 100%; flex: 1 1 0; min-width: 0; display: flex; align-items: flex-end; justify-content: center; gap: 2px; }
-.plot .col div { width: min(12px, 42%); border-radius: 4px 4px 0 0; }
+.plot .col { height: 100%; flex: 1 1 0; min-width: 0; display: flex; align-items: flex-end; justify-content: center; gap: 0; }
+.plot .col button.bar { height: 100%; flex: 0 1 18px; min-width: 0; padding: 0 1px; border: 0; background: transparent; cursor: pointer; display: flex; align-items: flex-end; justify-content: center; border-radius: 4px 4px 0 0; }
+.plot .col button.bar:hover, .plot .col button.bar:focus-visible { background: rgba(0, 38, 115, 0.07); }
+.plot .col button.bar span { display: block; width: 100%; max-width: 12px; border-radius: 4px 4px 0 0; }
+.plot .col button.bar:hover span { filter: brightness(0.88); }
+
 .xlabels { display: flex; justify-content: space-around; font-size: 12px; color: var(--ink-3); }
 .xlabels span { flex: 1 1 0; min-width: 0; text-align: center; }
 
 .topics { display: flex; flex-direction: column; gap: 10px; }
+button.topic { font: inherit; color: inherit; text-align: left; background: none; border: 0; padding: 4px 6px; margin: -4px -6px; border-radius: 8px; cursor: pointer; width: calc(100% + 12px); }
+button.topic:hover, button.topic:focus-visible { background: rgba(0, 38, 115, 0.06); }
 .topic { display: grid; grid-template-columns: minmax(0, 170px) minmax(0, 1fr) 64px; align-items: center; gap: 12px; }
 .topic .n { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.topic .track { position: relative; height: 18px; }
+.topic .track { position: relative; height: 18px; display: block; }
+.topic .track span { display: block; }
 .topic .track .mid { position: absolute; left: 50%; top: -4px; bottom: -4px; border-left: 1px solid var(--axis); }
 .topic .track .bar { position: absolute; top: 0; bottom: 0; }
 .topic .v { font-size: 14px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
@@ -198,6 +205,8 @@ button.tip:hover, button.tip[aria-expanded="true"] { color: var(--red); }
 .dissent .who b { color: #9f0b24; }
 .count-btn { font: inherit; font-variant-numeric: tabular-nums; color: var(--link); background: none; border: 0; padding: 4px 2px; min-height: 32px; cursor: pointer; text-decoration: underline; }
 .count-btn:disabled { color: var(--ink-3); text-decoration: none; cursor: default; }
+.kpi.go { cursor: pointer; }
+.kpi.go:hover { border-color: #b9c6e4; }
 .kpi-link { font: inherit; font-size: 13px; font-weight: 700; color: var(--link); background: none; border: 0; padding: 4px 0 0; cursor: pointer; text-align: left; text-decoration: underline; }
 
 .plot .col .novotes { align-self: flex-end; margin-bottom: 6px; font-size: 11px; font-weight: 600; color: var(--ink-3); writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; cursor: help; }

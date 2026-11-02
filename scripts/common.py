@@ -147,6 +147,7 @@ CREATE TABLE facets (
   sponsors    TEXT,
   departments TEXT,
   mover       TEXT,
+  topics      TEXT,
   dissent     TEXT     -- final-passage votes only: "Name|no; Name|abstain"
 );
 CREATE INDEX facets_date ON facets(date, is_council, seq);
@@ -156,9 +157,9 @@ CREATE INDEX facets_date ON facets(date, is_council, seq);
 def rebuild_search_index(con):
     con.executescript(FACETS_SCHEMA)
     con.execute("""INSERT INTO facets(item_id, event_id, date, body, is_council, kind, outcome_cat, seq,
-                                      sponsors, departments, mover, dissent)
+                                      sponsors, departments, mover, topics, dissent)
                    SELECT i.item_id, i.event_id, i.date, i.body, i.is_council, i.kind, i.outcome_cat, i.seq,
-                          i.sponsors, i.departments, i.mover,
+                          i.sponsors, i.departments, i.mover, i.topics,
                           CASE WHEN i.is_final = 1 THEN COALESCE((
                             SELECT group_concat(v.person || '|' || v.value, '; ') FROM votes v
                             WHERE v.item_id = i.item_id AND v.value IN ('no', 'abstain')), '') ELSE '' END
