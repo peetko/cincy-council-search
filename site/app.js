@@ -430,7 +430,7 @@
   }
 
   function niceMax(v) {
-    const steps = [5, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100, 150, 200, 300, 500, 1000];
+    const steps = [5, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100, 150, 200, 250, 300, 400, 500, 600, 800, 1000];
     return steps.find((s) => s >= v) || Math.ceil(v / 100) * 100;
   }
 
@@ -473,7 +473,7 @@
   function renderPeriod() {
     const p = stats.periods[state.period];
     document.querySelectorAll(".toggle button[data-period]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.period === state.period)));
-    $("period-long").textContent = p.long;
+    document.querySelectorAll(".period-long").forEach((el) => { el.textContent = p.long; });
     $("period-short-1").textContent = p.short;
     $("period-short-2").textContent = p.short;
     renderHoods().catch((e) => console.error(e));
@@ -677,6 +677,11 @@
         FROM meetings m WHERE m.date < ? ORDER BY m.date DESC LIMIT 6`, [t]);
     }
     $("upcoming-h").textContent = recent ? "Recent meetings" : "Coming up at City Hall";
+    if (!recent && rows[0]) {
+      const r0 = rows[0], when0 = new Date(r0.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+      $("teaser-coming").textContent = `${r0.date === t ? "Today" : "Next"}: ${r0.body}${r0.date === t ? (r0.time ? " at " + r0.time : "") : ", " + when0}`;
+      $("teaser-coming").dataset.next = "1";
+    }
     $("upcoming-list").innerHTML = rows.length ? rows.map((r) => {
       const title = `${r.body}, ${fmtDate(r.date)}`;
       const when = new Date(r.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
@@ -801,20 +806,97 @@
     const reset = document.querySelector(".filters .reset");
     reset.textContent = n ? `Clear ${n} filter${n === 1 ? "" : "s"}` : "Clear filters";
     reset.classList.toggle("active", n > 0);
+    $("filters-toggle-label").textContent = n ? `Filters (${n} on)` : "Filters";
+    $("filters-toggle").classList.toggle("active", n > 0);
+    if (n && !filtersOpen) setFiltersOpen(true);
   }
 
   function search() {
+    if (view !== "search") {  // results live on the Search page; keep the page we came from in Back history
+      history.pushState(null, "", location.pathname + location.search);
+      showView("search", false);
+    }
     renderMember();
     markActiveFilters();
     state.q = $("q").value;
     state.offset = 0;
     writeUrl();
-    runSearch(false);
+    const active = updateHome();
+    if (active) runSearch(false);
+  }
+
+  // ------------------------------------------------------------- pages ("views")
+  // One HTML file, several pages: the address bar's #part says which one is showing
+  // (#coming-up, #neighborhoods, …). The Search page shows the four question cards
+  // until someone searches or browses, then the filters and results.
+  const VIEWS = { "search": "Search", "coming-up": "What's coming up", "neighborhoods": "Neighborhoods",
+                  "council": "Council members", "how-it-works": "How City Hall works" };
+  const ALIASES = { "": "search", upcoming: "coming-up", trends: "coming-up", members: "council", analysis: "how-it-works" };
+  let view = "search", browsing = false, filtersOpen = false;
+
+  function viewFromHash() {
+    const h = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
+    return VIEWS[h] ? h : (h in ALIASES ? ALIASES[h] : null);
+  }
+  function showView(v, scroll = true) {
+    view = v;
+    document.querySelectorAll("[data-view]").forEach((el) => { el.hidden = el.dataset.view !== v; });
+    document.body.classList.toggle("inner", v !== "search");
+    document.querySelectorAll("nav.main [data-nav]").forEach((a) => {
+      const on = a.dataset.nav === v;
+      a.classList.toggle("on", on);
+      if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+    });
+    document.title = v === "search" ? "Plum Street Ledger — search Cincinnati City Council minutes" : `${VIEWS[v]} — Plum Street Ledger`;
+    if (v === "how-it-works" && !analysisLoading) analysisLoading = loadAnalysis();
+    if (scroll) window.scrollTo(0, 0);
+  }
+  function route() { const v = viewFromHash(); if (v && v !== view) showView(v); else if (v) window.scrollTo(0, 0); }
+
+  // Search page: question cards when idle, results once there is a search, filter or "browse".
+  function updateHome() {
+    const active = !!(state.q.trim() || anyFilter() || browsing);
+    $("home-cards").hidden = active;
+    $("results-area").hidden = !active;
+    return active;
+  }
+  function setFiltersOpen(open) {
+    filtersOpen = open;
+    $("filters").hidden = !open;
+    $("filters-toggle").setAttribute("aria-expanded", String(open));
+  }
+
+  // One line of live data on each home card.
+  function renderTeasers() {
+    if (stats) {
+      const k = (label) => (stats.kpis || []).find((x) => x.label === label);
+      const ord = k("Ordinances passed");
+      if (ord && !$("teaser-coming").dataset.next) $("teaser-coming").textContent = `${ord.value} ordinances passed so far this year`;
+      const hoods = ((stats.periods.year || {}).neighborhoods || []).filter((r) => r.cur > 0).sort((a, b) => b.cur - a.cur);
+      if (hoods[0]) $("teaser-hoods").textContent = `Most mentioned this year: ${hoods[0].name} (${hoods[0].cur} items)`;
+      const un = k("Unanimous final votes");
+      if (un) $("teaser-council").textContent = `${un.value} of final votes this year were unanimous`;
+    }
+    if (analysis && analysis.timing) $("teaser-how").textContent = `${analysis.timing.stuck_total.toLocaleString()} items have waited ${analysis.timing.stuck_days}+ days for a decision`;
   }
 
   // ------------------------------------------------------------- wire up
   function bind() {
     $("search-form").addEventListener("submit", (e) => { e.preventDefault(); FOCUS.forEach((k) => { state[k] = ""; }); state.q = $("q").value; search(); });
+    window.addEventListener("hashchange", route);
+    window.addEventListener("popstate", route);
+    $("filters-toggle").addEventListener("click", () => setFiltersOpen(!filtersOpen));
+    document.addEventListener("click", (e) => {
+      const br = e.target.closest("[data-browse], [data-latest]");
+      if (!br) return;
+      [...FILTERS, ...FOCUS].forEach((k) => { state[k] = ""; });
+      $("q").value = ""; state.q = "";
+      browsing = true;
+      syncFilterControls();
+      if (br.dataset.browse !== undefined) setFiltersOpen(true);
+      search();
+      $("results-area").scrollIntoView({ behavior: "smooth", block: "start" });
+    });
     bindTooltips();
     document.querySelectorAll("[data-try]").forEach((b) => b.addEventListener("click", () => { $("q").value = b.dataset.try; state.q = b.dataset.try; search(); }));
     $("filters").addEventListener("change", (e) => {
@@ -900,29 +982,23 @@
     { key: "emergency_share", label: "Emergency share", go: { kind: "ordinance", body: "@council", outcome: "passed" }, noun: "of ordinances passed as emergencies", pct: true, tip: "an_emergency_share" },
     { key: "meetings", label: "Meetings", go: {}, noun: "meetings of Council and its committees" },
   ];
-  // Diverging scale for the topic grid: red (below the topic's usual pace) – gray – blue (above).
-  const DIVERGING = [
-    { max: -0.75, bg: "#b8302f", fg: "#fff", label: "Under 60% of usual" },
-    { max: -0.4, bg: "#ef8f8e", fg: "#0d1b3a", label: "60–75% of usual" },
-    { max: -0.15, bg: "#fbdcdb", fg: "#0d1b3a", label: "75–90% of usual" },
-    { max: 0.15, bg: "#f1f2f5", fg: "#0d1b3a", label: "About usual" },
-    { max: 0.4, bg: "#d6e5fa", fg: "#0d1b3a", label: "10–30% above usual" },
-    { max: 0.75, bg: "#7fb0ee", fg: "#0d1b3a", label: "30–70% above usual" },
-    { max: Infinity, bg: "#1c5cab", fg: "#fff", label: "70%+ above usual" },
+  // Sequential scale for the topic grid: gray (that topic's quietest period) to blue (its busiest).
+  const GRID_RAMP = [
+    { bg: "#eceef2", fg: "#0d1b3a" }, { bg: "#d3e1f3", fg: "#0d1b3a" }, { bg: "#a9c8ef", fg: "#0d1b3a" },
+    { bg: "#6fa5e8", fg: "#0d1b3a" }, { bg: "#2f7bd8", fg: "#fff" }, { bg: "#174f9c", fg: "#fff" },
   ];
-  const divergingStep = (ratio) => { const l = Math.log2(Math.max(ratio, 1e-6)); return DIVERGING.find((d) => l < d.max) || DIVERGING[DIVERGING.length - 1]; };
+  // Explain why a period is partial: the record starts in July 2020, and the current period isn't over.
+  const partialTip = (p) => {
+    const label = p.label.replace(" (partial)", "");
+    const early = p.start > (an.span === "years" ? `${p.start.slice(0, 4)}-01-01` : "0000");
+    const why = p.start === (analysis && analysis.trends.years[0].start) && early
+      ? `This record starts in July 2020, so ${label} covers only ${fmtDate(p.start)} to ${fmtDate(p.end)}.`
+      : `${label} isn't over yet: this covers ${fmtDate(p.start)} to ${fmtDate(p.end)}.`;
+    return `data-tip-title="Partial ${an.span === "years" ? "year" : "term"}" data-tip-text="${esc(why + " Its totals will look lower than a full period's; hover a bar for the monthly pace, and the topic grid already compares items per month.")}"`;
+  };
   const plural = (n, one, many) => `${n.toLocaleString()} ${n === 1 ? one : (many || one + "s")}`;
   const dayWord = (n) => n === 0 ? "same day" : plural(Math.round(n), "day");
   const goAttr = (o) => `data-go='${esc(JSON.stringify(o))}'`;
-
-  function watchAnalysis() {
-    const box = $("analysis");
-    const load = () => { if (!analysisLoading) analysisLoading = loadAnalysis(); };
-    if (location.hash === "#analysis" || !("IntersectionObserver" in window)) return load();
-    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); load(); } }, { rootMargin: "800px 0px" });
-    io.observe(box);
-    document.querySelector('nav.main a[href="#analysis"]').addEventListener("click", load);
-  }
 
   async function loadAnalysis() {
     try {
@@ -931,6 +1007,7 @@
       analysis = await r.json();
       $("analysis-status").hidden = true;
       renderAnalysis();
+      renderTeasers();
     } catch (e) {
       console.error(e);
       $("analysis-status").textContent = "The analysis isn't available yet. It's built with each daily update.";
@@ -966,20 +1043,22 @@
     const grid = `<div class="g" style="top:0"></div><div class="g" style="top:50%"></div><div class="g base" style="bottom:0"></div>`;
     $("lt-chart").innerHTML = `<div class="bars-chart"><div class="y lt-y"><span>${m.pct ? "100%" : top}</span><span>${m.pct ? "50%" : Math.round(top / 2)}</span><span>0</span></div>
       <div class="plotwrap"><div class="plot lt-plot"><div class="inner">${grid}<div class="cols">${cols}</div></div></div>
-      <div class="xlabels">${periods.map((p) => `<span>${esc(p.label.replace(" (partial)", ""))}${p.partial ? "<small>partial</small>" : ""}</span>`).join("")}</div></div></div>`;
+      <div class="xlabels">${periods.map((p) => `<span>${esc(p.label.replace(" (partial)", ""))}${p.partial ? `<small class="partial-tip" tabindex="0" ${partialTip(p)}>partial</small>` : ""}</span>`).join("")}</div></div></div>`;
 
     // Topic grid: color each cell by how far that period's pace (items per month) is above or
     // below the topic's own average: blue = busier than usual, red = quieter, gray = about usual.
     const series = t[an.span === "years" ? "topics_by_year" : "topics_by_term"];
     const rows = Object.entries(series).map(([name, counts]) => ({ name, counts, total: counts.reduce((a, b) => a + b, 0) }))
       .filter((r) => r.total > 0).sort((a, b) => b.total - a.total);
-    const head = `<thead><tr><th scope="col">Topic</th>${periods.map((p) => `<th scope="col" class="num">${esc(p.label.replace(" (partial)", ""))}${p.partial ? "*" : ""}</th>`).join("")}</tr></thead>`;
+    const head = `<thead><tr><th scope="col">Topic</th>${periods.map((p) => `<th scope="col" class="num">${p.partial ? `<span class="partial-tip" tabindex="0" ${partialTip(p)}>${esc(p.label.replace(" (partial)", ""))}*</span>` : esc(p.label.replace(" (partial)", ""))}</th>`).join("")}</tr></thead>`;
     const body = rows.map((r) => {
       const rates = r.counts.map((c, i) => c / Math.max(1, periods[i].days));
       const avg = rates.reduce((a, b) => a + b, 0) / rates.length || 1;
+      const lo = Math.min(...rates), hi = Math.max(...rates);
       return `<tr><th scope="row">${esc(r.name)}</th>${r.counts.map((c, i) => {
         const ratio = rates[i] / avg;
-        const step = divergingStep(ratio);
+        const pos = hi > lo ? (rates[i] - lo) / (hi - lo) : 0.5;
+        const step = GRID_RAMP[Math.min(GRID_RAMP.length - 1, Math.floor(pos * GRID_RAMP.length))];
         const p = periods[i], label = p.label.replace(" (partial)", "");
         const pct = Math.round((ratio - 1) * 100);
         const how = Math.abs(pct) < 10 ? "about its usual pace" : `${Math.abs(pct)}% ${pct > 0 ? "busier" : "quieter"} than usual`;
@@ -989,7 +1068,7 @@
       }).join("")}</tr>`;
     }).join("");
     $("topic-grid").innerHTML = head + `<tbody>${body}</tbody>`;
-    $("grid-legend").innerHTML = `<span>Quieter than usual</span>${DIVERGING.map((d) => `<i style="background:${d.bg}" title="${esc(d.label)}"></i>`).join("")}<span>Busier than usual</span>`;
+    $("grid-legend").innerHTML = `<span>Quietest</span>${GRID_RAMP.map((d) => `<i style="background:${d.bg}"></i>`).join("")}<span>Busiest period for each topic</span>`;
   }
 
   // ---- How long legislation takes
@@ -1126,7 +1205,6 @@
     });
     $("stuck-more").addEventListener("click", () => { an.stuckShown += 20; renderStuck(); });
     $("lobby-more").addEventListener("click", () => { an.lobbyShown += 25; renderLobbying(); });
-    watchAnalysis();
   }
 
   async function start() {
@@ -1140,14 +1218,17 @@
       renderKpis();
       renderMonthly();
       renderPeriod();
+      renderTeasers();
     } catch (e) {
       console.error(e);
       $("kpi-list").innerHTML = `<div class="empty">Statistics are not available yet. They appear after the first data update runs.</div>`;
     }
     readUrl();
+    showView(viewFromHash() || "search", false);
     try {
       await db();
-      search();
+      if (view === "search") search(); else updateHome();  // opened on another page: don't jump to results
+      setTimeout(() => { if (!analysisLoading) analysisLoading = loadAnalysis(); }, 1500);  // for the home-card teaser
       renderUpcoming().catch((e) => console.error(e));
     } catch (e) {
       console.error(e);

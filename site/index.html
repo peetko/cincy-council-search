@@ -24,13 +24,12 @@
         <span><b>Plum Street Ledger</b><small>Cincinnati City Council · since July 2020</small></span>
       </a>
       <nav class="main" aria-label="Main">
-        <a href="#search" class="on">Search</a>
-        <a href="#upcoming">Coming up</a>
-        <a href="#trends">Trends</a>
-        <a href="#neighborhoods">Neighborhoods</a>
-        <a href="#members">Members</a>
-        <a href="#analysis">Analysis</a>
-        <a href="#about">About the data</a>
+        <a href="#" data-nav="search" class="on">Search</a>
+        <a href="#coming-up" data-nav="coming-up">Coming up</a>
+        <a href="#neighborhoods" data-nav="neighborhoods">Neighborhoods</a>
+        <a href="#council" data-nav="council">Council members</a>
+        <a href="#how-it-works" data-nav="how-it-works">How it works</a>
+        <a href="#about" data-nav="about">About</a>
       </nav>
     </div>
 
@@ -53,7 +52,7 @@
         <button type="button" data-try="abatement*">Tax abatements</button>
         <button type="button" data-vote="@split">Split votes</button>
       </div>
-      <p class="hint">Words are matched in any order. Use “quotes” for an exact phrase and * for word endings (zon* finds zoning and rezoning). Hover or tap the <span class="tip-demo" aria-hidden="true">i</span> icons for how Council works.</p>
+      <p class="hint"><button type="button" class="browse" data-browse>Or browse everything with filters</button> · Words are matched in any order. Use “quotes” for an exact phrase and * for word endings (zon* finds zoning and rezoning). Hover or tap the <span class="tip-demo" aria-hidden="true">i</span> icons for how Council works.</p>
     </div>
   </div>
   <div class="river" aria-hidden="true"></div>
@@ -61,7 +60,56 @@
 
 <main class="wrap">
 
-  <form class="filters" id="filters" aria-label="Filters">
+  <section class="view" data-view="search" aria-label="Search">
+    <h2 class="sr-only">Explore</h2>
+    <div class="home-cards" id="home-cards">
+      <a class="card home-card" href="#coming-up">
+        <span class="hc-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M8 14h3v3H8z"/></svg></span>
+        <span class="hc-body">
+          <b>What's coming up?</b>
+          <span class="hc-text">Upcoming meetings and agendas, and what Council has been passing.</span>
+          <span class="hc-teaser" id="teaser-coming"></span>
+        </span>
+        <span class="hc-go" aria-hidden="true">→</span>
+      </a>
+      <a class="card home-card" href="#neighborhoods">
+        <span class="hc-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg></span>
+        <span class="hc-body">
+          <b>What's happening in my neighborhood?</b>
+          <span class="hc-text">A map of Council business across every Cincinnati neighborhood.</span>
+          <span class="hc-teaser" id="teaser-hoods"></span>
+        </span>
+        <span class="hc-go" aria-hidden="true">→</span>
+      </a>
+      <a class="card home-card" href="#council">
+        <span class="hc-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.2A5 5 0 0 1 21 19"/></svg></span>
+        <span class="hc-body">
+          <b>How do Council members vote?</b>
+          <span class="hc-text">Attendance, no votes, and what each member sponsors.</span>
+          <span class="hc-teaser" id="teaser-council"></span>
+        </span>
+        <span class="hc-go" aria-hidden="true">→</span>
+      </a>
+      <a class="card home-card" href="#how-it-works">
+        <span class="hc-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M4 10h16M12 3l8 5H4l8-5z"/><path d="M6 10v8M10 10v8M14 10v8M18 10v8"/></svg></span>
+        <span class="hc-body">
+          <b>How does City Hall work?</b>
+          <span class="hc-text">How long legislation takes, what's stuck, and who's lobbying.</span>
+          <span class="hc-teaser" id="teaser-how"></span>
+        </span>
+        <span class="hc-go" aria-hidden="true">→</span>
+      </a>
+    </div>
+
+    <div class="results-area" id="results-area" hidden>
+      <div class="filter-bar">
+        <button type="button" class="filters-toggle" id="filters-toggle" aria-expanded="false" aria-controls="filters">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+          <span id="filters-toggle-label">Filters</span>
+        </button>
+        <span class="muted small" id="filters-hint">Narrow by type, date, sponsor, neighborhood and more.</span>
+      </div>
+  <form class="filters" id="filters" aria-label="Filters" hidden>
     <div class="f">
       <span class="lab"><label for="f-kind">Type</label></span>
       <select id="f-kind" name="kind">
@@ -134,7 +182,6 @@
     <button type="reset" class="reset">Clear filters</button>
   </form>
 
-  <div class="row">
     <section class="results" id="results" aria-labelledby="res-h" aria-live="polite">
       <section class="card member-card" id="member-card" aria-live="polite" hidden></section>
       <div class="results-head">
@@ -157,30 +204,36 @@
       <div id="result-list"></div>
       <button type="button" class="more" id="more" hidden>Show more results</button>
     </section>
+    </div>
+  </section>
 
-    <aside class="kpis" aria-labelledby="kpi-h">
+  <section class="view" data-view="coming-up" aria-labelledby="cu-h" hidden>
+    <div class="page-head">
+      <div class="ph-text">
+        <h2 id="cu-h">What's coming up</h2>
+        <p>The next meetings at City Hall, and how this year compares with last year. Click any meeting, bar or topic to see the items.</p>
+      </div>
+
+    </div>
+
+    <div class="cu-top">
       <section class="card upcoming" id="upcoming" aria-labelledby="upcoming-h">
         <h2 id="upcoming-h">Coming up at City Hall</h2>
         <ul id="upcoming-list"><li class="empty">Loading…</li></ul>
       </section>
-      <h2 id="kpi-h">This year so far</h2>
-      <div id="kpi-list"></div>
-    </aside>
-  </div>
-
-  <section id="trends" aria-labelledby="trends-h">
-    <div class="trends-head">
-      <div style="display:flex;flex-direction:column;gap:4px">
-        <h2 id="trends-h">Council at a glance</h2>
-        <span class="muted" id="period-long"></span>
+      <div class="cu-kpis">
+        <h3 id="kpi-h" class="sub-h">This year so far</h3>
+        <div id="kpi-list"></div>
       </div>
+    </div>
+    <div class="period-row">
+      <span class="muted period-long"></span>
       <div class="toggle" role="group" aria-label="Compare period">
         <button type="button" data-period="month" aria-pressed="false">Month</button>
         <button type="button" data-period="quarter" aria-pressed="false">Quarter</button>
         <button type="button" data-period="year" aria-pressed="true">Year</button>
       </div>
     </div>
-
     <div class="charts">
       <figure class="chart">
         <figcaption>
@@ -206,8 +259,23 @@
         <div class="topics-axis"><span>◀ less often</span><span>more often ▶</span></div>
       </figure>
     </div>
+    <button type="button" class="linkish see-latest" data-latest>See the latest agenda and minutes items →</button>
+  </section>
 
-    <figure class="chart full" id="neighborhoods">
+  <section class="view" data-view="neighborhoods" aria-labelledby="nb-h" hidden>
+    <div class="page-head">
+      <div class="ph-text">
+        <h2 id="nb-h">What's happening in my neighborhood</h2>
+        <p>Agenda items that mention each of Cincinnati's neighborhoods by name. Click a neighborhood to see what Council took up there.</p>
+      </div>
+      <div class="toggle" role="group" aria-label="Compare period">
+        <button type="button" data-period="month" aria-pressed="false">Month</button>
+        <button type="button" data-period="quarter" aria-pressed="false">Quarter</button>
+        <button type="button" data-period="year" aria-pressed="true">Year</button>
+      </div>
+    </div>
+
+    <figure class="chart full" id="hood-figure">
       <figcaption>
         <span class="t lab">Where the activity is<button type="button" class="tip" data-tip="chart_hoods" aria-label="About this map">i</button></span>
         <span class="s">Items mentioning each neighborhood, <span id="period-short-2"></span>. Click a neighborhood to see its items.</span>
@@ -218,8 +286,23 @@
       </div>
       <span class="s muted" id="hood-attrib" hidden style="font-size:12px">Neighborhood boundaries © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors.</span>
     </figure>
+  </section>
 
-    <figure class="chart full" id="members">
+  <section class="view" data-view="council" aria-labelledby="cm-h" hidden>
+    <div class="page-head">
+      <div class="ph-text">
+        <h2 id="cm-h">How Council members vote</h2>
+        <p>Most votes are unanimous, so the interesting part is the exceptions. Click a name for that member's page, or a number to see those votes.</p>
+      </div>
+      <div class="toggle" role="group" aria-label="Compare period">
+        <button type="button" data-period="month" aria-pressed="false">Month</button>
+        <button type="button" data-period="quarter" aria-pressed="false">Quarter</button>
+        <button type="button" data-period="year" aria-pressed="true">Year</button>
+      </div>
+    </div>
+
+    <p class="council-links"><button type="button" class="chip" data-vote="@split">See every split vote</button></p>
+    <figure class="chart full" id="members-figure">
       <figcaption class="cap-row">
         <span style="display:flex;flex-direction:column;gap:4px">
           <span class="t lab">How members voted (click a name for their page)<button type="button" class="tip" data-tip="chart_members" aria-label="About this table">i</button></span>
@@ -249,13 +332,24 @@
     </figure>
   </section>
 
-  <section id="analysis" aria-labelledby="analysis-h">
-    <div class="trends-head">
-      <div style="display:flex;flex-direction:column;gap:4px">
-        <h2 id="analysis-h">Digging deeper</h2>
-        <span class="muted">Patterns across the whole record since July 2020. Click a bar, number or name to see the items behind it.</span>
+  <section class="view" data-view="how-it-works" aria-labelledby="hw-h" hidden>
+    <div class="page-head">
+      <div class="ph-text">
+        <h2 id="hw-h">How City Hall works</h2>
+        <p>How an idea becomes law in Cincinnati, and what the record shows about the process: how long it takes, what stalls, who lobbies, and how the workload has changed.</p>
       </div>
+
     </div>
+
+    <ol class="lifecycle" aria-label="How an ordinance becomes law">
+      <li><b>1. Introduced</b><span>The City Manager, the Mayor or Council members file legislation with the Clerk of Council.</span></li>
+      <li><b>2. Committee</b><span>A Council committee hears it, asks questions, and recommends whether to pass it.</span></li>
+      <li><b>3. Full Council</b><span>Council votes, usually on Wednesdays. Five of nine votes pass an ordinance; an emergency clause needs six.</span></li>
+      <li><b>4. Mayor</b><span>The Mayor signs it, or vetoes it (Council can override with six votes).</span></li>
+      <li><b>5. Takes effect</b><span>30 days later, or right away if it passed as an emergency.</span></li>
+    </ol>
+
+  <div id="analysis">
     <p class="empty" id="analysis-status">Loading the analysis…</p>
 
     <figure class="chart full" id="long-trends" hidden>
@@ -344,6 +438,7 @@
       </div>
       <details class="past-committees" id="past-committees" hidden><summary>Committees that haven't met in the last 12 months</summary><ul id="past-committee-list"></ul></details>
     </figure>
+  </div>
   </section>
 
   <footer class="site" id="about">
