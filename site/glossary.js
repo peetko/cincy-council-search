@@ -58,6 +58,7 @@ window.GLOSSARY = {
   col_dissent: ["No / abstain", "Final-passage votes where the member voted no or abstained. Click a number to see what those votes were about."],
   col_against: ["Against majority", "Votes where the member voted the opposite way from most colleagues, a rough measure of independent votes."],
   spark: ["Mentions per quarter", "How many agenda and minutes items matched your search in each quarter, to show when a subject was most active."],
+  balance_on_file: ["“Balance on file in the Clerk's office”", "Legistar keeps only the opening of long legislation in its title field. The Clerk ends those titles with “balance on file in the Clerk's office,” meaning the rest of the text is in the full document. Open the legislation page to read it."],
   // ---- analysis section
   an_trends: ["The long view", "Totals for each calendar year or each two-year Council term. Council members have served two-year terms, starting each January of an even-numbered year, since 2022; the Council elected in 2017 served four years (2018–21), so only its last year and a half is in this record. Click a bar to see the items behind it."],
   an_emergency_share: ["Emergency share", "Of the ordinances Council passed, the share passed with an emergency clause, which lets them take effect right away instead of after 30 days. A high share is normal in Cincinnati, where most spending and contract ordinances are passed as emergencies."],

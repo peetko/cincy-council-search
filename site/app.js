@@ -306,8 +306,19 @@
   const ICON_ARROW = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>';
   const ICON_CAL = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
 
+  // Long legislation is cut short in Legistar's title field and ends "(BALANCE ON FILE IN THE CLERK'S
+  // OFFICE)": the rest is in the full document. Drop the phrase and show a link to it instead.
+  const BALANCE_RX = /\s*\(?\s*balance\s+on\s+file\s+(?:in|with)\s+the\s+clerk['’]?s\s+office\s*\)?\s*\.?\s*$/i;
+  const stripBalance = (t) => (t || "").replace(BALANCE_RX, " …");
+  function balanceLink(r) {
+    if (!BALANCE_RX.test(r.title || "")) return "";
+    const label = "Rest of the text is in the full document";
+    return r.matter_url
+      ? `<a class="balance" href="${esc(r.matter_url)}" target="_blank" rel="noopener" data-tip="balance_on_file">${label} ↗</a>`
+      : `<span class="balance" tabindex="0" data-tip="balance_on_file">${label}</span>`;
+  }
   function highlight(snip, title) {
-    let text = snip || title || "";
+    let text = stripBalance(snip || title || "");
     if (!snip && text.length > 420) text = text.slice(0, 420) + " …";
     return esc(text).replace(/\u0001/g, "<mark>").replace(/\u0002/g, "</mark>");
   }
@@ -415,8 +426,9 @@
         ${head.outcome ? `<span class="outcome" tabindex="0" data-tip="${outcomeTipFor(head)}">${icon}${esc(head.outcome)}${steps.length > 1 ? ` · ${esc(fmtDate(head.date))}` : ""}</span>` : ""}
       </div>
       <p class="snip">${highlight(snip, main.title)}</p>
-      ${isCut(snip, main.title) ? `<div class="fulltext" hidden><p>${highlightTerms(main.title || "")}</p></div>
+      ${isCut(snip, main.title) ? `<div class="fulltext" hidden><p>${highlightTerms(stripBalance(main.title))}</p></div>
       <button type="button" class="linkish read-more" data-fulltext data-ids="${steps.map((r) => r.item_id).join(",")}" aria-expanded="false">Show full text</button>` : ""}
+      ${balanceLink(main)}
       ${dissentBox(decisive)}
       <div class="meta">${meta.join("")}</div>
       ${timeline}
@@ -926,7 +938,8 @@
       const un = k("Unanimous final votes");
       if (un) $("teaser-council").textContent = `${un.value} of final votes this year were unanimous`;
     }
-    if (analysis && analysis.timing) $("teaser-how").textContent = `${analysis.timing.stuck_total.toLocaleString()} items have waited ${analysis.timing.stuck_days}+ days for a decision`;
+    const ord = analysis && analysis.timing && analysis.timing.by_kind && analysis.timing.by_kind.ordinance;
+    if (ord) $("teaser-how").textContent = `A typical ordinance goes from first agenda to final vote in ${ord.median === 0 ? "a single day" : plural(Math.round(ord.median), "day")}`;
   }
 
   // ------------------------------------------------------------- wire up
