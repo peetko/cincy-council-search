@@ -1,0 +1,32 @@
+{
+  "_help": "Settings for the collector. Lines starting with _ are notes. Regexes are case-insensitive.",
+
+  "legistar_client": "cincinnatioh",
+  "legistar_site": "https://cincinnatioh.legistar.com",
+  "start_date": "2020-07-01",
+
+  "_include_bodies": "Which meeting bodies to collect. '.*' = all (City Council + every committee).",
+  "include_bodies_regex": ".*",
+
+  "_council_body": "How to recognise full City Council meetings (vs. committees).",
+  "council_body_regex": "^(cincinnati )?city council$",
+
+  "_vote_bodies": "Roll-call votes are only downloaded for these bodies (keeps the job fast).",
+  "vote_bodies_regex": "^(cincinnati )?city council$",
+
+  "_final_passage": "Which actions count as a final vote (excludes suspension of readings and emergency-clause votes).",
+  "final_passage_regex": "pass|adopt",
+  "not_final_regex": "suspen|emergency|reading|amend",
+
+  "_vote_values": "How Legistar vote words map to yes / no / absent / abstain. Anything unlisted counts as 'other'.",
+  "vote_values": {
+    "yes": ["yea", "yes", "aye", "affirmative", "y"],
+    "no": ["nay", "no", "n", "negative"],
+    "absent": ["absent", "excused", "not present"],
+    "abstain": ["abstain", "abstained", "recused", "present"]
+  },
+
+  "_refresh": "Each run re-checks meetings changed since the last run, plus every meeting in this window (days back / days ahead).",
+  "refresh_days_back": 45,
+  "refresh_days_ahead": 30
+}

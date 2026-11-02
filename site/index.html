@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Council Record — search Cincinnati City Council minutes</title>
+  <meta name="description" content="Search Cincinnati City Council ordinances, motions, votes and minutes since July 2020, with running statistics.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <div class="topbar">
+      <a class="brand" href="./">
+        <span class="logo">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#13233a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M5 21V10"/><path d="M19 21V10"/><path d="M9 21V10"/><path d="M15 21V10"/><path d="M2 10l10-6 10 6"/></svg>
+        </span>
+        <span><b>Council Record</b><small>Cincinnati City Council · since July 2020</small></span>
+      </a>
+      <nav class="main" aria-label="Main">
+        <a href="#search" class="on">Search</a>
+        <a href="#trends">Trends</a>
+        <a href="#members">Members</a>
+        <a href="#about">About the data</a>
+      </nav>
+    </div>
+
+    <div id="search" style="display:flex;flex-direction:column;gap:14px">
+      <h1>Search every ordinance, motion and vote.</h1>
+      <form class="searchbar" id="search-form" role="search">
+        <label for="q" class="sr-only">Search agenda and minutes items</label>
+        <div class="searchbox">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5b6778" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+          <input id="q" name="q" type="search" autocomplete="off" placeholder="Ordinance number, department, person, street, topic…">
+        </div>
+        <button type="submit">Search</button>
+      </form>
+      <div class="tries" aria-label="Example searches">
+        <span>Try:</span>
+        <button type="button" data-try='"Data and Performance Analytics"'>Data &amp; Performance Analytics</button>
+        <button type="button" data-try="Kroger">Kroger</button>
+        <button type="button" data-try="streetcar">Streetcar</button>
+        <button type="button" data-try='"short-term rental"'>Short-term rentals</button>
+        <button type="button" data-try="abatement*">Tax abatements</button>
+      </div>
+      <p class="hint">Words are matched in any order. Use “quotes” for an exact phrase and * for word endings (zon* finds zoning and rezoning).</p>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <form class="filters" id="filters" aria-label="Filters">
+    <div class="f">
+      <label for="f-kind">Type</label>
+      <select id="f-kind" name="kind">
+        <option value="">All types</option>
+        <option value="ordinance">Ordinances</option>
+        <option value="resolution">Resolutions</option>
+        <option value="motion">Motions</option>
+        <option value="communication">Communications &amp; reports</option>
+        <option value="appointment">Appointments</option>
+      </select>
+    </div>
+    <div class="f">
+      <label for="f-body">Meeting body</label>
+      <select id="f-body" name="body">
+        <option value="">Council + all committees</option>
+        <option value="@council">City Council only</option>
+        <option value="@committees">Committees only</option>
+      </select>
+    </div>
+    <div class="f">
+      <label for="f-sponsor">Sponsor</label>
+      <select id="f-sponsor" name="sponsor"><option value="">Anyone</option></select>
+    </div>
+    <div class="f">
+      <label for="f-dept">Department</label>
+      <select id="f-dept" name="dept"><option value="">Any department</option></select>
+    </div>
+    <div class="f">
+      <label for="f-outcome">Outcome</label>
+      <select id="f-outcome" name="outcome">
+        <option value="">Any outcome</option>
+        <option value="passed">Passed / adopted</option>
+        <option value="failed">Failed</option>
+        <option value="referred">Referred to committee</option>
+        <option value="held">Held</option>
+        <option value="filed">Filed</option>
+        <option value="scheduled">On an upcoming agenda</option>
+      </select>
+    </div>
+    <div class="f">
+      <label for="f-date">Date range</label>
+      <select id="f-date" name="date">
+        <option value="">All dates</option>
+        <option value="upcoming">Upcoming meetings</option>
+        <option value="90d">Last 90 days</option>
+        <option value="12m">Last 12 months</option>
+        <option value="ytd">This year</option>
+        <option value="lastyear">Last year</option>
+      </select>
+    </div>
+    <button type="reset" class="reset">Clear filters</button>
+  </form>
+
+  <div class="row">
+    <section class="results" aria-labelledby="res-h" aria-live="polite">
+      <div class="results-head">
+        <h2 id="res-h">Loading…</h2>
+        <div class="sorter" id="sorter" hidden>
+          <span id="res-sub"></span>
+          <span>· sort by</span>
+          <button type="button" data-sort="newest" aria-pressed="true">newest</button>
+          <button type="button" data-sort="relevance" aria-pressed="false">relevance</button>
+        </div>
+      </div>
+      <div class="card spark" id="spark" hidden>
+        <div class="head"><b>Mentions per quarter</b><span class="muted" id="spark-range"></span></div>
+        <div class="bars" id="spark-bars" role="img"></div>
+        <div class="axis" id="spark-axis"></div>
+      </div>
+      <div id="result-list"></div>
+      <button type="button" class="more" id="more" hidden>Show more results</button>
+    </section>
+
+    <aside class="kpis" aria-labelledby="kpi-h">
+      <h2 id="kpi-h">This year so far</h2>
+      <div id="kpi-list"></div>
+    </aside>
+  </div>
+
+  <section id="trends" aria-labelledby="trends-h">
+    <div class="trends-head">
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <h2 id="trends-h">Council at a glance</h2>
+        <span class="muted" id="period-long"></span>
+      </div>
+      <div class="toggle" role="group" aria-label="Compare period">
+        <button type="button" data-period="month" aria-pressed="false">Month</button>
+        <button type="button" data-period="quarter" aria-pressed="false">Quarter</button>
+        <button type="button" data-period="year" aria-pressed="true">Year</button>
+      </div>
+    </div>
+
+    <div class="charts">
+      <figure class="chart">
+        <figcaption>
+          <span class="t">Ordinances passed per month</span>
+          <span class="legend" id="month-legend"></span>
+        </figcaption>
+        <div class="bars-chart">
+          <div class="y" id="month-y"></div>
+          <div class="plotwrap">
+            <div class="plot" id="month-plot"></div>
+            <div class="xlabels" id="month-x"></div>
+          </div>
+        </div>
+        <span class="s muted" style="font-size:13px">Distinct ordinances on final passage at full Council. Hover a month for exact counts.</span>
+      </figure>
+
+      <figure class="chart">
+        <figcaption>
+          <span class="t">Topics coming up more — and less</span>
+          <span class="s">Change in items tagged with each topic, <span id="period-short-1"></span></span>
+        </figcaption>
+        <div class="topics" id="topics"></div>
+        <div class="topics-axis"><span>◀ less often</span><span>more often ▶</span></div>
+      </figure>
+    </div>
+
+    <figure class="chart full" id="members">
+      <figcaption class="cap-row">
+        <span style="display:flex;flex-direction:column;gap:4px">
+          <span class="t">How members voted</span>
+          <span class="s" id="members-sub"></span>
+        </span>
+        <span class="legend">
+          <span><i style="background:var(--series-cur)"></i>Yes</span>
+          <span><i style="background:var(--series-no)"></i>No</span>
+          <span><i style="background:var(--absent);border:1px solid #a9a79f"></i>Absent / abstain</span>
+        </span>
+      </figcaption>
+      <div class="tablebox">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Member</th>
+              <th scope="col" class="num">Present</th>
+              <th scope="col" style="width:46%">Votes cast</th>
+              <th scope="col" class="num">No votes</th>
+              <th scope="col" class="num">Against majority</th>
+            </tr>
+          </thead>
+          <tbody id="member-rows"></tbody>
+        </table>
+      </div>
+    </figure>
+  </section>
+
+  <footer class="site" id="about">
+    <span>Source: City of Cincinnati Legistar public data (<a href="https://cincinnatioh.legistar.com">cincinnatioh.legistar.com</a>). Updated daily. Not an official record — the Clerk of Council keeps the official minutes.</span>
+    <span>Topic and department tags come from keyword lists, so treat the trend numbers as a guide, not an exact count.</span>
+    <!-- OPTIONAL: to invite alert requests, replace [YOUR EMAIL] below and remove the comment markers around the line.
+    <span>Want an email when a subject shows up on an agenda? <a href="mailto:[YOUR EMAIL]?subject=Council%20Record%20alert%20request">Ask to be added to the watch list</a>.</span>
+    -->
+    <span id="updated"></span>
+  </footer>
+</main>
+
+<script src="vendor/index.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

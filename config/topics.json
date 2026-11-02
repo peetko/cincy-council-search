@@ -1,0 +1,16 @@
+{
+  "_help": "Each topic lists words or phrases. An agenda item gets the topic if its text contains any of them (whole-word, case-insensitive; a trailing * matches word endings, e.g. 'appropriat*'). Edit freely; the next run re-tags everything.",
+  "Housing & zoning": ["housing", "affordable", "zoning", "rezon*", "tenant*", "landlord*", "eviction*", "short-term rental*", "homeowner*", "residential"],
+  "Public safety": ["police", "CPD", "fire department", "firefight*", "public safety", "gun*", "firearm*", "violence", "emergency communications", "crime"],
+  "Transit & streets": ["streetcar", "connector", "Metro", "bus", "transit", "bike", "bicycle", "traffic", "sidewalk*", "pedestrian*", "street*", "transportation", "DOTE", "parking", "road*"],
+  "Parks & recreation": ["park", "parks", "recreation", "playground*", "trail*", "greenspace"],
+  "Budget & finance": ["budget", "bond*", "debt", "revenue", "fiscal", "deficit", "operating fund", "capital fund", "general fund"],
+  "Development incentives": ["tax abatement*", "abatement", "CRA", "community reinvestment area", "TIF", "tax increment", "development agreement", "job creation tax credit", "funding agreement"],
+  "Climate & energy": ["climate", "energy", "solar", "emission*", "sustainab*", "green cincinnati", "electric vehicle*", "EV charging"],
+  "Utilities & data centers": ["water works", "GCWW", "MSD", "sewer*", "stormwater", "data center*", "utility", "utilities", "broadband"],
+  "Youth & human services": ["youth", "human services", "child*", "homeless*", "food insecurity", "senior*", "summer jobs"],
+  "Health": ["health", "Cincinnati Health Department", "opioid*", "overdose*", "mental health", "hospital*"],
+  "Arts & culture": ["arts", "artwork", "mural*", "music hall", "museum*", "festival*", "cultural"],
+  "Labor & city workforce": ["collective bargaining", "union*", "AFSCME", "FOP", "IAFF", "salary", "salaries", "pension*", "retirement system", "employee*"],
+  "Governance & elections": ["charter", "ethics", "election*", "ballot", "council rules", "lobby*", "campaign finance"]
+}

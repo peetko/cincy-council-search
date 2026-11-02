@@ -1,0 +1,100 @@
+# Runs every morning: downloads new/changed meetings from Legistar, rebuilds the
+# statistics, emails agenda alerts, and publishes the site to GitHub Pages.
+# You can also run it by hand: Actions tab > "Update council data" > Run workflow.
+name: Update council data
+
+on:
+  schedule:
+    - cron: "37 10 * * *"   # daily at 10:37 UTC = 5:37 am EST / 6:37 am EDT
+  workflow_dispatch:
+    inputs:
+      full_rebuild:
+        description: "Re-download everything since July 2020 (takes 30-60 min)"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+
+permissions:
+  contents: write   # only used to keep the schedule alive (see last step)
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up GitHub Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      # The database is not stored in the repo (it would bloat it). Instead each
+      # run starts from the copy the live site is serving and only adds changes.
+      - name: Download the database the site is currently serving
+        if: ${{ !inputs.full_rebuild }}
+        run: |
+          mkdir -p site/data
+          if curl -fsSL -o site/data/council.db "${{ steps.pages.outputs.base_url }}/data/council.db"; then
+            echo "Starting from the published database ($(du -h site/data/council.db | cut -f1))."
+          else
+            echo "No published database yet - doing the full first-time download."
+            rm -f site/data/council.db
+          fi
+
+      - name: Collect meetings, agenda items and votes from Legistar
+        run: python scripts/collect.py
+
+      - name: Build statistics
+        run: python scripts/build_stats.py
+
+      - name: Data check
+        run: python scripts/report.py
+
+      - name: Send agenda alerts
+        env:
+          ALERT_WATCHLIST: ${{ secrets.ALERT_WATCHLIST }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SITE_URL: ${{ steps.pages.outputs.base_url }}
+        run: python scripts/alerts.py
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      # GitHub pauses scheduled workflows in public repos after 60 days without
+      # a commit. This adds an empty commit every ~50 quiet days so the daily
+      # update keeps running. (Commits made here do not re-trigger this workflow.)
+      - name: Keep the daily schedule alive
+        if: github.event_name == 'schedule'
+        run: |
+          days=$(( ( $(date +%s) - $(git log -1 --format=%ct) ) / 86400 ))
+          if [ "$days" -ge 50 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "Keep scheduled updates running"
+            git push
+          fi
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

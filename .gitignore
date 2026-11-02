@@ -1,0 +1,11 @@
+# The database and stats are built by GitHub Actions and published with the site,
+# not stored in the repo.
+site/data/*.db
+site/data/*.db-journal
+site/data/stats.json
+
+# Your private watch list for testing alerts locally. Never commit it.
+config/watchlist.local.json
+
+__pycache__/
+.DS_Store
