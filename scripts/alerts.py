@@ -140,7 +140,7 @@ def main():
                 matches[term] = hits
         if matches:
             msg = build_email(sub, matches, site_url)
-            msg["From"] = os.environ.get("ALERT_FROM") or user or "council-record@localhost"
+            msg["From"] = os.environ.get("ALERT_FROM") or user or "plum-street-ledger@localhost"
             outgoing.append(msg)
 
     if not outgoing:
