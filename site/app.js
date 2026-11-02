@@ -46,8 +46,14 @@
 
   // Turn what someone typed into a safe SQLite full-text query.
   // "exact phrase" stays a phrase, word* matches endings, everything else is ANDed.
+  // title:"…" (or title:word) matches only an item's title, the legislation's own text.
   function ftsQuery(input) {
     const parts = [];
+    input = input.replace(/\btitle:(?:"([^"]*)"|(\S+))/gi, (_, ph, w) => {
+      const words = (ph || w || "").match(/[\p{L}\p{N}]+/gu);
+      if (words) parts.push('{title matter_name} : "' + words.join(" ") + '"');
+      return " ";
+    });
     const rest = input.replace(/"([^"]*)"/g, (_, p) => {
       const words = p.match(/[\p{L}\p{N}]+/gu);
       if (words) parts.push('"' + words.join(" ") + '"');
@@ -94,7 +100,8 @@
     if (state.file) { where.push("f.matter_file = ?"); args.push(state.file); }
     if (state.item) { where.push("f.item_id = ?"); args.push(Number(state.item)); }
     if (state.meeting) { where.push("f.event_id = ?"); args.push(Number(state.meeting)); }
-    if (state.kind) { where.push("f.kind = ?"); args.push(state.kind); }
+    if (state.kind === "@legislation") where.push("f.kind IN ('ordinance', 'resolution', 'motion')");
+    else if (state.kind) { where.push("f.kind = ?"); args.push(state.kind); }
     if (state.body === "@council") where.push("f.is_council = 1");
     else if (state.body === "@committees") where.push("f.is_council = 0");
     else if (state.body) { where.push("f.body_id = (SELECT id FROM body_names WHERE name = ?)"); args.push(state.body); }
@@ -1134,7 +1141,7 @@
     // Sorting: text columns A→Z first, number and date columns biggest/newest first.
     const SORTS = {
       client: (c) => c.client.toLowerCase().replace(/^the /, ""), agents: (c) => (c.agents.length ? c.agents.length : -1),
-      registrations: (c) => c.registrations, mentions: (c) => c.mentions, recent: (c) => (c.recent[0] ? c.recent[0].date : ""),
+      registrations: (c) => c.registrations, mentions: (c) => c.mentions * 10000 + (c.passed || 0), recent: (c) => (c.recent[0] ? c.recent[0].date : ""),
     };
     const key = SORTS[an.lobbySort], dir = an.lobbyDir === "asc" ? 1 : -1;
     const sorted = l.clients.slice().sort((a, b) => {
@@ -1151,7 +1158,7 @@
       return `<tr><th scope="row">${esc(c.client)}</th>
         <td>${esc(c.agents.join(", ")) || "<span class='muted'>not parsed</span>"}</td>
         <td class="num"><span title="First ${esc(fmtDate(c.first))}, latest ${esc(fmtDate(c.last))}">${c.registrations}</span></td>
-        <td class="num">${c.mentions ? `<button type="button" class="count-btn" ${goAttr({ q: c.query, from: c.first, to: addDays(today(), 90), label: "Since " + fmtDate(c.first) })} aria-label="Show ${c.mentions} pieces of legislation naming ${esc(c.client)}">${c.mentions.toLocaleString()}</button>` : `<span class="muted">0</span>`}</td>
+        <td class="num">${c.mentions ? `<button type="button" class="count-btn" ${goAttr({ q: c.query, kind: "@legislation", from: c.from, to: c.to, label: `${fmtDate(c.from)} – ${fmtDate(c.to)}` })} aria-label="Show ${c.mentions} pieces of legislation naming ${esc(c.client)}">${c.mentions.toLocaleString()}</button>${c.passed ? `<span class="passed-n">${c.passed} passed</span>` : ""}` : `<span class="muted">0</span>`}</td>
         <td class="recent">${r ? `<span class="muted small">${fmtDate(r.date)}${r.file ? ` · <button type="button" class="linkish mono" ${goAttr({ file: r.file })}>${esc(r.file)}</button>` : ""}</span><span class="small">${esc(r.title)}</span>` : ""}</td></tr>`;
     }).join("") || `<tr><td colspan="5" class="empty">No registrations could be matched to clients.</td></tr>`;
     const more = $("lobby-more");

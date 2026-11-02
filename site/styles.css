@@ -423,3 +423,4 @@ body.inner header.site .wrap { padding-bottom: 24px; gap: 18px; }
 .lifecycle li b { font-size: 16px; color: var(--navy); }
 .lifecycle li span { font-size: 14px; line-height: 1.45; color: var(--ink-2); }
 #analysis { border-top: 0; padding-top: 0; }
+.passed-n { display: block; font-size: 12px; color: var(--ink-3); white-space: nowrap; }

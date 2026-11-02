@@ -106,7 +106,7 @@ def timing(con, today):
 
 
 # ---------------------------------------------------------------- 2. lobbying
-AGENT_RX = re.compile(r"Legislative Agents?\s*[:,]?\s*([^,(]+)", re.I)
+AGENT_RX = re.compile(r"Legislative Agents?\s*[:,]?\s*([^,(]+?)(?=\s*[,(]|(?<=\w{2})\.\s|$)", re.I)
 PAREN_RX = re.compile(r"\(([^()]{2,160})\)")
 NOT_CLIENT = re.compile(r"^\s*(termination|terminated|amended|amendment|renewal|renewed|revised|corrected|update[d]?|"
                         r"emergency|\d+|[a-z]|see attached|attached|[a-z] version|substitute|as amended)\s*$", re.I)
@@ -218,28 +218,33 @@ def lobbying(con, today):
     out, all_agents = [], []
     for key, c in clients.items():
         name = max(c["names"].items(), key=lambda kv: (kv[1], len(kv[0])))[0]
-        first = min(c["registrations"])
-        phrase = '"' + re.sub(r"[^\w&' ]+", " ", name).strip() + '"'
+        first, last = min(c["registrations"]), max(c["registrations"])
+        until = (dt.date.fromisoformat(last) + dt.timedelta(days=365)).isoformat()
+        words = re.sub(r"[^\w&' ]+", " ", name).strip()
+        phrase = '"' + words + '"'
+        # Legislation only (ordinances, resolutions, motions), matched in its own title text, while the
+        # client was registered: first registration through a year after the latest one.
         try:
             hits = con.execute("""
-                SELECT i.item_id, i.date, i.matter_file, i.title, i.outcome, i.body FROM items_fts
+                SELECT i.item_id, i.matter_id, i.date, i.matter_file, i.title, i.outcome, i.body FROM items_fts
                 JOIN items i ON i.item_id = items_fts.rowid
-                WHERE items_fts MATCH ? AND i.date >= ? AND i.title NOT LIKE 'REGISTRATION%'
-                  AND COALESCE(i.matter_type, '') NOT LIKE 'Registration%'
-                ORDER BY i.date DESC""", (phrase, first)).fetchall()
+                WHERE items_fts MATCH ? AND i.date BETWEEN ? AND ?
+                  AND i.kind IN ('ordinance', 'resolution', 'motion') AND i.matter_id IS NOT NULL
+                ORDER BY i.date DESC""", ("{title matter_name} : " + phrase, first, until)).fetchall()
         except Exception:
             hits = []
         seen, uniq = set(), []
         for h in hits:  # one row per piece of legislation, newest appearance first
-            k = h["matter_file"] or -h["item_id"]
-            if k not in seen:
-                seen.add(k)
+            if h["matter_id"] not in seen:
+                seen.add(h["matter_id"])
                 uniq.append(h)
+        passed = con.execute(f"""SELECT COUNT(DISTINCT matter_id) FROM items WHERE outcome_cat = 'passed'
+                                 AND matter_id IN ({",".join("?" * len(seen)) or "NULL"})""", list(seen)).fetchone()[0]
         agents = merge_agents(c["agents"])
         all_agents += agents
-        out.append({"client": name, "query": phrase, "agents": agents[:8],
-                    "registrations": len(c["registrations"]), "first": first, "last": max(c["registrations"]),
-                    "mentions": len(uniq),
+        out.append({"client": name, "query": "title:" + phrase, "agents": agents[:8],
+                    "registrations": len(c["registrations"]), "first": first, "last": last,
+                    "from": first, "to": until, "mentions": len(uniq), "passed": passed,
                     "recent": [{"date": h["date"], "file": h["matter_file"], "title": short(h["title"], 140),
                                 "outcome": h["outcome"], "body": h["body"]} for h in uniq[:3]]})
     out.sort(key=lambda c: (-c["mentions"], c["client"]))

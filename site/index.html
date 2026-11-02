@@ -114,6 +114,7 @@
       <span class="lab"><label for="f-kind">Type</label></span>
       <select id="f-kind" name="kind">
         <option value="">All types</option>
+        <option value="@legislation">Legislation (ordinances, resolutions, motions)</option>
         <option value="ordinance">Ordinances</option>
         <option value="resolution">Resolutions</option>
         <option value="motion">Motions</option>
@@ -408,14 +409,14 @@
             <th scope="col" data-sort-col="client"><button type="button" class="sort-btn" data-lobby-sort="client">Client</button></th>
             <th scope="col" data-sort-col="agents"><button type="button" class="sort-btn" data-lobby-sort="agents">Registered lobbyists</button></th>
             <th scope="col" class="num" data-sort-col="registrations"><button type="button" class="sort-btn" data-lobby-sort="registrations">Registrations</button></th>
-            <th scope="col" class="num" data-sort-col="mentions"><span class="lab end"><button type="button" class="sort-btn" data-lobby-sort="mentions">Later legislation naming client</button><button type="button" class="tip" data-tip="an_lobby_mentions" aria-label="About this column">i</button></span></th>
-            <th scope="col" data-sort-col="recent"><button type="button" class="sort-btn" data-lobby-sort="recent">Most recent of those</button></th>
+            <th scope="col" class="num" data-sort-col="mentions"><span class="lab end"><button type="button" class="sort-btn" data-lobby-sort="mentions">Legislation naming client</button><button type="button" class="tip" data-tip="an_lobby_mentions" aria-label="About this column">i</button></span></th>
+            <th scope="col" data-sort-col="recent"><button type="button" class="sort-btn" data-lobby-sort="recent">Most recent</button></th>
           </tr></thead>
           <tbody id="lobby-rows"></tbody>
         </table>
       </div>
       <button type="button" class="more" id="lobby-more" hidden>Show more clients</button>
-      <span class="s muted small">A name match is a starting point for reading the record, not proof that a lobbyist worked on an item.</span>
+      <span class="s muted small">Counts ordinances, resolutions and motions whose own text names the client, from the client's first registration through a year after its latest. A name match is a starting point for reading the record, not proof that a lobbyist worked on an item.</span>
     </figure>
 
     <figure class="chart full" id="committees" hidden>
