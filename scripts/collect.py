@@ -25,6 +25,13 @@ NOT_FINAL_RX = rx(SETTINGS["not_final_regex"])
 SITE = SETTINGS["legistar_site"].rstrip("/")
 
 
+def legislation_url(matter_id):
+    """Link to the item's Legistar page. The API's GUID doesn't match the one the public
+    site expects ("Invalid parameters!"), so use Legistar's gateway, which needs only the ID
+    and redirects to the right LegislationDetail page."""
+    return f"{SITE}/gateway.aspx?M=L&ID={matter_id}" if matter_id else None
+
+
 def now_utc():
     return dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
 
@@ -89,8 +96,7 @@ def save_items(con, ev, body, date, today, seen_at, stats):
         text = " ".join([title, clean(it.get("EventItemMatterName")), clean(it.get("EventItemAgendaNote")),
                          clean(it.get("EventItemMinutesNote")), clean(it.get("EventItemActionText"))])
         matter_id = it.get("EventItemMatterId")
-        matter_url = (f"{SITE}/LegislationDetail.aspx?ID={matter_id}&GUID={it.get('EventItemMatterGuid')}"
-                      if matter_id else None)
+        matter_url = legislation_url(matter_id)
         con.execute("""
             INSERT INTO items(item_id, event_id, date, body, is_council, seq, agenda_number, matter_id,
               matter_file, matter_name, matter_type, matter_status, matter_url, kind, title, action,
@@ -177,6 +183,8 @@ def retag(con):
         con.execute("DELETE FROM items WHERE item_id = ?", (item_id,))
     if noise:
         print(f"Removed {len(noise)} section headers / boilerplate lines.")
+    con.execute("UPDATE items SET matter_url = ? || '/gateway.aspx?M=L&ID=' || matter_id "
+                "WHERE matter_id IS NOT NULL", (SITE,))
     rows = con.execute("SELECT item_id, title, matter_name, agenda_note, minutes_note, action_text, "
                        "matter_type, is_council, passed, action FROM items").fetchall()
     for r in rows:
