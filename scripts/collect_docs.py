@@ -91,8 +91,26 @@ def rtf_to_text(rtf):
     return rtf.replace("{", "").replace("}", "")
 
 
-def stored_text(matter_id):
-    """Legistar's stored legislation text for the latest version, if any."""
+RULES_VERSION = "2"  # bump when the rules change, to re-check what was saved under older rules
+MARKER = re.compile(r"(?im)^\s*\.\.\s*(title|body|header|footer|recommendation|summary|end)\b[^\n]*$")
+
+
+def body_of(plain):
+    """Legistar marks sections with lines like '..Title' and '..Body'. Keep everything except the
+    title (which the site already has); if there are no markers, keep it all."""
+    parts = MARKER.split(plain)
+    if len(parts) == 1:
+        return plain
+    out, i = [parts[0]], 1
+    while i < len(parts) - 1:
+        if parts[i].lower() != "title":
+            out.append(parts[i + 1])
+        i += 2
+    return "\n\n".join(x.strip() for x in out if x.strip())
+
+
+def stored_text(matter_id, title=""):
+    """Legistar's stored legislation text for the latest version, if it has more than the title."""
     versions = legistar.get(f"matters/{matter_id}/versions") or []
     if not versions:
         return None
@@ -107,8 +125,12 @@ def stored_text(matter_id):
     plain = t.get("MatterTextPlain") or ""
     if len(plain.strip()) < MIN_CHARS and t.get("MatterTextRtf"):
         plain = rtf_to_text(t["MatterTextRtf"])
-    plain = clean(plain)
-    return plain if len(plain) >= MIN_CHARS else None
+    body = clean(body_of(plain))
+    STATS["stored text checked"] = STATS.get("stored text checked", 0) + 1
+    if len(body) - len(clean(title or "")) < MIN_CHARS:  # nothing much beyond the title
+        STATS["stored text was only the title"] = STATS.get("stored text was only the title", 0) + 1
+        return None
+    return clean(plain.replace("..Title", "").replace("..Body", ""))
 
 
 def pick_attachment(atts):
@@ -152,7 +174,8 @@ def file_text(data):
     return ""
 
 
-SEEN_NAMES = {"chosen": {}, "passed over": {}}  # attachment names, printed for the Data check
+SEEN_NAMES = {"chosen": {}, "passed over": {}, "scanned (no text layer)": {}}
+STATS = {}  # attachment names, printed for the Data check
 
 
 def note(kind, name):
@@ -160,9 +183,9 @@ def note(kind, name):
     SEEN_NAMES[kind][name] = SEEN_NAMES[kind].get(name, 0) + 1
 
 
-def fetch_one(matter_id):
+def fetch_one(matter_id, title=""):
     """-> (status, source, name, url, text)"""
-    text = stored_text(matter_id)
+    text = stored_text(matter_id, title)
     if text:
         return "ok", "text", None, None, text
     atts = legistar.get(f"matters/{matter_id}/attachments") or []
@@ -179,6 +202,7 @@ def fetch_one(matter_id):
         return "none", "attachment", a.get("MatterAttachmentName"), url, None
     text = clean(file_text(data))
     if len(text) < MIN_CHARS:
+        note("scanned (no text layer)", a.get("MatterAttachmentName"))
         return "scan", "attachment", a.get("MatterAttachmentName"), url, None
     return "ok", "attachment", a.get("MatterAttachmentName"), url, text
 
@@ -186,7 +210,7 @@ def fetch_one(matter_id):
 def todo(main, docs, today):
     """Legislation to fetch, newest first: never checked, or seen on an agenda since it was checked."""
     rows = main.execute("""
-        SELECT matter_id, MAX(matter_file) AS matter_file, MAX(date) AS last_seen FROM items
+        SELECT matter_id, MAX(matter_file) AS matter_file, MAX(date) AS last_seen, MAX(title) AS title FROM items
         WHERE matter_id IS NOT NULL AND kind IN ('ordinance', 'resolution', 'motion')
         GROUP BY matter_id ORDER BY last_seen DESC""").fetchall()
     known = {r["matter_id"]: r for r in docs.execute("SELECT matter_id, status, checked FROM docs")}
@@ -194,7 +218,7 @@ def todo(main, docs, today):
     out = []
     for r in rows:
         k = known.get(r["matter_id"])
-        if k is None:
+        if k is None or k["status"] == "error":
             out.append(r)
         elif k["checked"] < week_ago and r["last_seen"] > k["checked"] and r["last_seen"] <= today:
             out.append(r)  # back on an agenda since we looked (it may have been amended)
@@ -214,19 +238,32 @@ def main():
     main_db = sqlite3.connect(args.db)
     main_db.row_factory = sqlite3.Row
     docs = connect(docs_path)
+    docs.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)")
+    row = docs.execute("SELECT value FROM meta WHERE key = 'rules_version'").fetchone()
+    if not row or row[0] != RULES_VERSION:
+        n = docs.execute("DELETE FROM docs WHERE NOT (status = 'ok' AND source = 'attachment')").rowcount
+        docs.execute("INSERT OR REPLACE INTO meta VALUES ('rules_version', ?)", (RULES_VERSION,))
+        docs.commit()
+        print(f"Collection rules changed: {n} saved results will be fetched again.")
     queue, total = todo(main_db, docs, today)
     print(f"{len(queue)} of {total} pieces of legislation need their full text fetched.")
 
     deadline = time.time() + args.minutes * 60
-    done, counts = 0, {}
+    done, counts, errors_in_a_row = 0, {}, 0
     for r in queue:
         if time.time() > deadline or (args.limit and done >= args.limit):
             break
         try:
-            status, source, name, url, text = fetch_one(r["matter_id"])
+            status, source, name, url, text = fetch_one(r["matter_id"], r["title"])
         except Exception as e:  # one bad file shouldn't stop the run
             status, source, name, url, text = "error", None, None, None, None
             print(f"  {r['matter_file']}: {e}")
+            errors_in_a_row += 1
+            if errors_in_a_row >= 5:
+                print("Five errors in a row - Legistar may be down. Stopping; the next run will pick up here.")
+                break
+        else:
+            errors_in_a_row = 0
         docs.execute("""INSERT OR REPLACE INTO docs(matter_id, matter_file, status, source, name, url, chars, checked, text)
                         VALUES(?,?,?,?,?,?,?,?,?)""",
                      (r["matter_id"], r["matter_file"], status, source, name, url, len(text or ""), today, text))
@@ -240,6 +277,8 @@ def main():
     print(f"Fetched {done} this run: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())) +
           (f". {left} left for the next runs." if left else ". All caught up."))
 
+    if STATS:
+        print("Stored text: " + ", ".join(f"{k} {v}" for k, v in STATS.items()))
     for kind, names in SEEN_NAMES.items():
         if names:
             top = sorted(names.items(), key=lambda kv: -kv[1])[:15]
