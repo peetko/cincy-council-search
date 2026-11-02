@@ -595,13 +595,14 @@
     const pt = ([x, y]) => `${((x - minX) * kx * scale).toFixed(1)},${((maxY - y) * scale).toFixed(1)}`;
     const paths = shapes.features.map((f) => {
       const name = f.properties.name, r = byName.get(name) || { cur: 0, prev: 0 };
-      const d = f.geometry.coordinates.map((poly) => "M" + poly[0].map(pt).join("L") + "Z").join("");
+      const d = f.geometry.coordinates.map((poly) => "M" + poly[0].map(pt).join("L") + "Z").join("");  // holes render via fill-rule
       return `<path d="${d}" fill="${colorFor(r.cur)}" tabindex="0" role="button" data-go='${go(name)}'
         data-tip-title="${esc(name)}" data-tip-text="${r.cur} item${r.cur === 1 ? "" : "s"} ${esc(p.short.split(" vs.")[0])}${change(r) ? " · " + esc(change(r)) : ""}. Click to see them."
         aria-label="${esc(name)}: ${r.cur} items. Show them."></path>`;
     }).join("");
     mapBox.hidden = false;
     $("hood-attrib").hidden = false;
+    if (shapes.attribution) $("hood-attrib").textContent = "Neighborhood boundaries: " + shapes.attribution + ".";
     mapBox.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="group" aria-label="Map of Cincinnati neighborhoods shaded by number of Council items">${paths}</svg>
       <div class="legend hood-legend" aria-hidden="true"><span>Fewer items</span>${["#eef1f6", ...SEQ].map((c) => `<i style="background:${c}"></i>`).join("")}<span>More</span></div>`;
   }

@@ -112,6 +112,6 @@ site/                          the website (index.html, styles.css, app.js, glos
 tests/fake_legistar.py         a fake Legistar API used for testing
 ```
 
-Neighborhood boundaries © OpenStreetMap contributors (ODbL), fetched once by `scripts/fetch_neighborhoods.py`; delete `data/neighborhoods.geojson` from the site (or run it with `--refresh`) to update them.
+Neighborhood boundaries come from the City/County GIS (CAGIS) map service, with any gaps filled from OpenStreetMap (© OpenStreetMap contributors, ODbL). They're fetched once by `scripts/fetch_neighborhoods.py`; delete `data/neighborhoods.geojson` from the site (or run it with `--refresh`) to update them.
 
 The in-browser SQLite library in `site/vendor/` is [sql.js-httpvfs](https://github.com/phiresky/sql.js-httpvfs) (Apache-2.0 license, included).

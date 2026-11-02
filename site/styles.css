@@ -270,7 +270,7 @@ details.timeline li.more-steps { display: block; color: var(--ink-3); font-style
 .hoods { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
 .hood-map { flex: 3 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 .hood-map svg { width: 100%; height: auto; display: block; }
-.hood-map path { stroke: #fff; stroke-width: 1; cursor: pointer; }
+.hood-map path { stroke: #fff; stroke-width: 1; cursor: pointer; fill-rule: evenodd; }
 .hood-map path:hover, .hood-map path:focus-visible { stroke: var(--red); stroke-width: 2.5; outline: none; }
 .hood-legend { align-items: center; gap: 4px; }
 .hood-legend i { width: 22px; height: 10px; border-radius: 2px; }
