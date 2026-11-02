@@ -151,8 +151,19 @@
     $("results").classList.add("busy");
     if (append) { $("more").textContent = "Loading…"; }
     else { $("res-h").innerHTML = `<span class="searching"><span class="spinner" aria-hidden="true"></span>Searching…</span>`; $("timing").textContent = ""; }
-    try { await runSearchInner(append); }
-    finally {
+    try {
+      try { await runSearchInner(append); }
+      catch (e) {
+        if (!isStale(e)) throw e;
+        // The data was republished while this page was open: reconnect and try once more.
+        await reconnect();
+        await runSearchInner(append);
+      }
+    } catch (e) {
+      console.error(e);
+      $("res-h").textContent = "Search error";
+      renderNothing("That search could not run. Try removing punctuation, or reload the page. (" + esc(e.message || e) + ")");
+    } finally {
       $("results").classList.remove("busy");
       $("more").textContent = "Show more results";
       const secs = ((performance.now() - started) / 1000).toFixed(1);
@@ -222,12 +233,20 @@
       snips.forEach((x) => { if (!snipByKey.has(x.k) || /\u0001/.test(x.snip)) snipByKey.set(x.k, x.snip); });
       $("result-list").insertAdjacentHTML("beforeend", keys.map((k) => renderGroup(byKey.get(k), snipByKey.get(k))).join(""));
     } catch (e) {
-      console.error(e);
-      renderNothing("That search could not run. Try removing punctuation. (" + esc(e.message || e) + ")");
+      throw e;  // handled (and retried if the data was just updated) in runSearch
     }
   }
 
-  // ------------------------------------------------------------- rendering: search
+  // A daily update replaces the database file. A page opened before the update has cached
+  // pieces of the old file, and mixing them with the new one looks like a damaged database.
+  const isStale = (e) => /malformed|disk image|not a database|file is not/i.test(String(e && e.message || e));
+  async function reconnect() {
+    dbPromise = null;
+    try { const r = await fetch("data/stats.json", { cache: "no-cache" }); if (r.ok) stats = await r.json(); } catch (e) { /* keep old stats */ }
+    console.info("Council Record: the data was updated while this page was open; reconnected.");
+    $("timing").textContent = "The data was just updated; reconnecting…";
+    return db();
+  }
   function renderHead(n, meetings, isSearch) {
     const things = (x) => `${x.toLocaleString()} ${x === 1 ? "item" : "items"}`;
     let h;
