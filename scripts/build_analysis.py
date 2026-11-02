@@ -107,7 +107,18 @@ def timing(con, today):
 
 # ---------------------------------------------------------------- 2. lobbying
 AGENT_RX = re.compile(r"Legislative Agents?\s*[:,]?\s*(.+?)(?:,|\.\s|\(|$)", re.I)
-CLIENT_RX = re.compile(r"\(([^()]{2,120})\)\s*\.?\s*$")
+PAREN_RX = re.compile(r"\(([^()]{2,160})\)")
+NOT_CLIENT = re.compile(r"^\s*(termination|terminated|amended|amendment|renewal|renewed|revised|corrected|update[d]?|"
+                        r"emergency|\d+|[a-z]|see attached|attached)\s*$", re.I)
+
+
+def client_of(title):
+    """The client is the last parenthesized name in a registration, e.g. '… OH 45219. (ART ACADEMY OF CINCINNATI)'."""
+    groups = [g.strip() for g in PAREN_RX.findall(title or "") if not NOT_CLIENT.match(g)]
+    if groups:
+        return groups[-1]
+    m = re.search(r"\(([^()]{3,160})$", (title or "").strip())  # closing parenthesis missing
+    return m.group(1).strip(" .") if m and not NOT_CLIENT.match(m.group(1)) else None
 CORP_WORDS = re.compile(r"\b(the|inc|incorporated|llc|l\.l\.c|llp|co|company|corp|corporation|ltd|lp|pllc|na|n\.a)\b\.?", re.I)
 GENERIC = {"city", "cincinnati", "ohio", "county", "state", "group", "association", "foundation", "services",
            "partners", "holdings", "development", "properties", "council", "public", "affairs", "consulting"}
@@ -131,13 +142,12 @@ def lobbying(con, today):
     clients, parsed, per_year = {}, 0, collections.Counter()
     for r in regs:
         t = r["title"] or ""
-        m_client = CLIENT_RX.search(t)
+        raw = client_of(t)
         m_agent = AGENT_RX.search(t)
         per_year[r["date"][:4]] += 1
-        if not m_client:
+        if not raw:
             continue
         parsed += 1
-        raw = m_client.group(1).strip()
         key = client_key(raw).lower()
         if len(key) < 3 or key in GENERIC:
             continue

@@ -97,6 +97,12 @@ def main():
     for (t,) in q("""SELECT title FROM items WHERE title LIKE 'REGISTRATION%' OR title LIKE '%Legislative Agent%'
                      ORDER BY date DESC LIMIT 4"""):
         print("    - " + (t or "")[:200])
+    from build_analysis import client_of
+    misses = [t for (t,) in q("""SELECT title FROM items WHERE title LIKE 'REGISTRATION%' OR title LIKE '%Legislative Agent%'
+                                ORDER BY date DESC""") if not client_of(t)]
+    print(f"  registrations with no client found: {len(misses)}; samples:")
+    for t in misses[:6]:
+        print("    - " + (t or "")[:260])
     print("  sample meeting start/end notes:")
     for (t,) in q("""SELECT COALESCE(NULLIF(minutes_note, ''), title) FROM items WHERE is_council = 0
                      AND (title LIKE '%began%' OR title LIKE '%called to order%' OR minutes_note LIKE '%began%'

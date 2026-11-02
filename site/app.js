@@ -980,7 +980,7 @@
     const t = analysis.timing;
     if (!t || !t.by_kind) return;
     $("time-to-pass").hidden = false;
-    const tiles = [["ordinance", "Ordinances"], ["resolution", "Resolutions"]].filter(([k]) => t.by_kind[k]).map(([k, label]) => {
+    const tiles = [["ordinance", "Ordinances"], ["resolution", "Resolutions"], ["motion", "Motions"]].filter(([k]) => t.by_kind[k]).map(([k, label]) => {
       const s = t.by_kind[k];
       return `<div><span class="v">${dayWord(s.median)}</span><span class="l">${label}: typical time (median) across ${s.n.toLocaleString()}. The middle half took ${s.p25}–${plural(s.p75, "day")}.</span></div>`;
     }).join("");
