@@ -244,8 +244,8 @@ def is_noise(title, matter_id, action):
     t = (title or "").strip()
     if matter_id or (action or "").strip():
         return False
-    if not t:
-        return True
+    if not any(c.isalnum() for c in t):
+        return True  # empty, or just punctuation like "."
     if len(t) < 90 and t.upper() == t and any(c.isalpha() for c in t):
         return True  # "ROLL CALL", "AGENDA", "MS. KEARNEY", "BUDGET AND FINANCE COMMITTEE"
     return bool(SKIP_RX.search(t))
