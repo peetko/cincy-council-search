@@ -1,6 +1,7 @@
 """Split site/data/council.db into numbered pieces for the website.
 
-    python scripts/split_db.py
+    python scripts/split_db.py                       # council.db -> data/db/, db-info.json
+    python scripts/split_db.py --db site/data/docs.db --out docs --info docs-info.json
 
 Why: the page reads the database a few KB at a time. To do that it must know
 the file's exact size. GitHub Pages compresses its answer to "how big is this
@@ -26,12 +27,18 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default=DEFAULT_DB)
     ap.add_argument("--chunk-mb", type=float, default=CHUNK / 1024 / 1024, help="piece size (testing)")
+    ap.add_argument("--out", default="db", help="folder (inside the data folder) for the pieces")
+    ap.add_argument("--info", default="db-info.json")
     args = ap.parse_args()
     chunk = int(args.chunk_mb * 1024 * 1024) // 4096 * 4096
     data_dir = os.path.dirname(os.path.abspath(args.db))
-    out_dir = os.path.join(data_dir, "db")
+    out_dir = os.path.join(data_dir, args.out)
+    base = os.path.basename(args.db)
     os.makedirs(out_dir, exist_ok=True)
-    for old in glob.glob(os.path.join(out_dir, "council.db.*")):
+    if not os.path.exists(args.db):
+        print(f"{args.db} not found; nothing to split.")
+        return
+    for old in glob.glob(os.path.join(out_dir, base + ".*")):
         os.remove(old)
 
     size = os.path.getsize(args.db)
@@ -41,13 +48,13 @@ def main():
             piece = f.read(chunk)
             if not piece:
                 break
-            with open(os.path.join(out_dir, f"council.db.{n:0{SUFFIX}d}"), "wb") as out:
+            with open(os.path.join(out_dir, f"{base}.{n:0{SUFFIX}d}"), "wb") as out:
                 out.write(piece)
             n += 1
 
     info = {"databaseLengthBytes": size, "serverChunkSize": chunk, "suffixLength": SUFFIX,
-            "urlPrefix": "data/db/council.db.", "pieces": n, "version": f"{size}-{int(os.path.getmtime(args.db))}"}
-    with open(os.path.join(data_dir, "db-info.json"), "w") as f:
+            "urlPrefix": f"data/{args.out}/{base}.", "pieces": n, "version": f"{size}-{int(os.path.getmtime(args.db))}"}
+    with open(os.path.join(data_dir, args.info), "w") as f:
         json.dump(info, f)
     print(f"Split {size / 1e6:.1f} MB into {n} pieces in {out_dir}")
 

@@ -120,6 +120,21 @@ def main():
         if lob["registrations"] and lob["parsed"] < lob["registrations"] * 0.6:
             warnings.append("Fewer than 60% of lobbyist registrations had a client name in parentheses - check CLIENT_RX in build_analysis.py.")
 
+    docs_path = os.path.join(os.path.dirname(os.path.abspath(args.db)), "docs.db")
+    if os.path.exists(docs_path):
+        import sqlite3
+        dc = sqlite3.connect(docs_path)
+        print("\n== Full text of legislation (docs.db) ==")
+        for status, source, n, chars in dc.execute(
+                "SELECT status, COALESCE(source, ''), COUNT(*), SUM(chars) FROM docs GROUP BY 1, 2 ORDER BY 3 DESC"):
+            print(f"  {n:6}  {status:<6} {source:<10} {(chars or 0) / 1e6:.1f}M characters")
+        print(f"  file size {os.path.getsize(docs_path) / 1e6:.1f} MB")
+        for (name,) in dc.execute("SELECT name FROM docs WHERE status = 'ok' AND source = 'attachment' ORDER BY checked DESC LIMIT 5"):
+            print(f"    chosen attachment: {name}")
+        sample = dc.execute("SELECT matter_file, substr(text, 1, 220) FROM docs WHERE status = 'ok' ORDER BY RANDOM() LIMIT 2").fetchall()
+        for f, t in sample:
+            print(f"    {f}: {' '.join((t or '').split())}")
+
     if warnings:
         print("\nWARNINGS:")
         for w in warnings:

@@ -12,6 +12,10 @@ on:
         description: "Re-download everything since July 2020 (takes 30-60 min)"
         type: boolean
         default: false
+      docs_minutes:
+        description: "Minutes to spend fetching the full text of legislation (the daily run uses 25)"
+        type: number
+        default: 25
   push:
     branches: [main]
 
@@ -52,6 +56,24 @@ jobs:
             rm -f site/data/council.db
           fi
 
+      # The full text of legislation lives in a separate database (docs.db), published
+      # only in pieces. Rebuild it from those pieces so the backfill carries on.
+      - name: Download the full-text database the site is currently serving
+        run: |
+          base="${{ steps.pages.outputs.base_url }}"
+          mkdir -p site/data
+          if curl -fsSL --retry 3 -o /tmp/docs-info.json "$base/data/docs-info.json"; then
+            n=$(python -c "import json; print(json.load(open('/tmp/docs-info.json'))['pieces'])")
+            prefix=$(python -c "import json; print(json.load(open('/tmp/docs-info.json'))['urlPrefix'])")
+            : > site/data/docs.db
+            for i in $(seq 0 $((n - 1))); do
+              curl -fsSL --retry 3 "$base/${prefix}$(printf %03d "$i")" >> site/data/docs.db
+            done
+            echo "Starting from the published full-text database ($(du -h site/data/docs.db | cut -f1))."
+          else
+            echo "No full-text database yet - starting one."
+          fi
+
       - name: Download the saved neighborhood map (or fetch it from OpenStreetMap)
         run: |
           curl -fsSL -o site/data/neighborhoods.geojson "${{ steps.pages.outputs.base_url }}/data/neighborhoods.geojson" || rm -f site/data/neighborhoods.geojson
@@ -59,6 +81,13 @@ jobs:
 
       - name: Collect meetings, agenda items and votes from Legistar
         run: python scripts/collect.py
+
+      - name: Collect the full text of legislation
+        env:
+          DOCS_MINUTES: ${{ inputs.docs_minutes || (github.event_name == 'push' && 8) || 25 }}
+        run: |
+          pip install --quiet pypdf
+          python scripts/collect_docs.py
 
       - name: Build statistics
         run: python scripts/build_stats.py
@@ -79,7 +108,10 @@ jobs:
         run: python scripts/alerts.py
 
       - name: Split the database into pieces for the website
-        run: python scripts/split_db.py
+        run: |
+          python scripts/split_db.py
+          python scripts/split_db.py --db site/data/docs.db --out docs --info docs-info.json
+          rm -f site/data/docs.db   # published only in pieces
 
       - uses: actions/upload-pages-artifact@v3
         with:

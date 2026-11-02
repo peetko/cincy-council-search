@@ -182,6 +182,7 @@ CREATE TABLE facets (
 CREATE INDEX facets_date ON facets(date, is_council, seq);
 CREATE INDEX facets_event ON facets(event_id);
 CREATE INDEX facets_file ON facets(matter_file);
+CREATE INDEX facets_matter ON facets(matter_id);
 """
 
 

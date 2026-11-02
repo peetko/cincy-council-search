@@ -427,9 +427,20 @@ body.inner header.site .wrap { padding-bottom: 24px; gap: 18px; }
 .read-more { align-self: flex-start; font-size: 14px; margin-top: -4px; }
 .fulltext { display: flex; flex-direction: column; gap: 10px; }
 .fulltext .notes { display: flex; flex-direction: column; gap: 8px; border-left: 3px solid var(--badge); padding-left: 12px; font-size: 14px; }
-.fulltext .notes b { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-2); }
+.fulltext .notes > b { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-2); }
 .fulltext .note { display: flex; flex-direction: column; gap: 2px; }
 .fulltext .note p { font-size: 14px; }
 .balance { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600; color: var(--ink-2); background: var(--badge); border-radius: 999px; padding: 3px 10px; margin-top: -4px; text-decoration: none; cursor: help; }
 a.balance { color: var(--link); cursor: pointer; }
 a.balance:hover { text-decoration: underline; }
+.docs-toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: #fff; cursor: pointer; align-self: flex-start; }
+.docs-toggle input { width: 18px; height: 18px; accent-color: var(--red); margin: 0; cursor: pointer; }
+.docs-toggle .tip { color: #c4d0ea; }
+body.inner .docs-toggle { display: none; }
+.docs-offer { margin: -8px 0 0; font-size: 14px; color: var(--ink-2); }
+.doc-snip { font-size: 15px !important; color: var(--ink-2); }
+.doc-tag { font-size: 11px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: var(--navy); background: var(--badge); border-radius: 6px; padding: 2px 6px; margin-right: 4px; cursor: help; }
+.doctext { max-height: 520px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; background: var(--page); border-radius: 8px; }
+.doctext p { font-size: 15px !important; }
+.vote-line { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px !important; }
+.vote-line .v-no b { color: #9f0b24; }

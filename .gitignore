@@ -13,3 +13,5 @@ config/watchlist.local.json
 
 __pycache__/
 .DS_Store
+site/data/docs/
+site/data/docs-info.json

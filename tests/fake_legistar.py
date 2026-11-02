@@ -41,6 +41,31 @@ LOBBY = [("Jane Doe", "Frost Brown Todd", "KROGER CO."), ("John Roe", "Taft Law"
 VERBS = ["AUTHORIZING", "ESTABLISHING", "MODIFYING", "APPROPRIATING funds for"]
 
 events, items, votes = [], {}, {}
+
+
+def make_pdf(text):
+    """A minimal one-page PDF with a real text layer (empty text = like a scan)."""
+    lines = [text[i:i + 90] for i in range(0, len(text), 90)] or [""]
+    stream = "BT /F1 9 Tf 40 760 Td 12 TL " + " ".join(f"({l.replace('(', '').replace(')', '')}) '" for l in lines) + " ET"
+    objs = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+            f"<< /Length {len(stream)} >>\nstream\n{stream}\nendstream", "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+    out, offsets = "%PDF-1.4\n", []
+    for i, o in enumerate(objs, 1):
+        offsets.append(len(out))
+        out += f"{i} 0 obj\n{o}\nendobj\n"
+    xref = len(out)
+    out += f"xref\n0 {len(objs) + 1}\n0000000000 65535 f \n" + "".join(f"{o:010d} 00000 n \n" for o in offsets)
+    out += f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n"
+    return out.encode("latin-1")
+
+
+def make_docx(text):
+    import io, zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("word/document.xml", f'<w:document><w:body><w:p><w:r><w:t>{text}</w:t></w:r></w:p></w:body></w:document>')
+    return buf.getvalue()
 office_records = []
 
 
@@ -210,6 +235,44 @@ class H(http.server.BaseHTTPRequestHandler):
             return self.send_json(office_records[skip:skip + top])
         if len(parts) == 5 and parts[2] == "events" and parts[4] == "eventitems":
             return self.send_json(items.get(int(parts[3]), []))
+        # Full legislation text: some matters have stored text, some a PDF or Word attachment,
+        # some only exhibits (nothing to index), and some a scanned PDF (no text layer).
+        if len(parts) >= 5 and parts[2] == "matters":
+            mid = int(parts[3])
+            kind = mid % 5
+            body = (f"FULL TEXT of legislation {mid}. WHEREAS the City of Cincinnati wishes to improve services; "
+                    f"and WHEREAS the Groundwork Ohio River Valley partnership supports climate resilience in Price Hill; "
+                    f"NOW, THEREFORE, BE IT ORDAINED by the Council of the City of Cincinnati: Section 1. The City Manager "
+                    f"is authorized to expend up to $50,000 for the purposes described. Section 2. This ordinance shall "
+                    f"take effect at the earliest time allowed by law. ") * 3
+            if parts[4] == "versions":
+                return self.send_json([{"Key": str(mid * 10 + 1), "Value": "1"}, {"Key": str(mid * 10 + 2), "Value": "2"}] if kind == 0 else [])
+            if parts[4] == "texts":
+                return self.send_json({"MatterTextPlain": body, "MatterTextRtf": None})
+            if parts[4] == "attachments":
+                host = f"http://localhost:{self.server.server_address[1]}"
+                atts = [{"MatterAttachmentName": "Exhibit A - Map", "MatterAttachmentHyperlink": f"{host}/files/{mid}.pdf", "MatterAttachmentIsHyperlink": False}]
+                if kind == 1:
+                    atts.append({"MatterAttachmentName": "Ordinance", "MatterAttachmentHyperlink": f"{host}/files/{mid}.pdf", "MatterAttachmentIsHyperlink": False})
+                if kind == 2:
+                    atts.append({"MatterAttachmentName": "Motion", "MatterAttachmentHyperlink": f"{host}/files/{mid}.docx", "MatterAttachmentIsHyperlink": False})
+                if kind == 3:
+                    atts.append({"MatterAttachmentName": "Ordinance (signed scan)", "MatterAttachmentHyperlink": f"{host}/files/scan.pdf", "MatterAttachmentIsHyperlink": False})
+                return self.send_json(atts)
+        if len(parts) == 2 and parts[0] == "files":
+            name = parts[1]
+            mid = int(name.split(".")[0]) if name[0].isdigit() else 0
+            text = (f"Attachment text for legislation {mid}. Section 1. The Kroger Company and the City agree to the "
+                    f"neighborhood grocery program in Avondale. Section 2. Funds are appropriated. ") * 4
+            if name.endswith(".docx"):
+                data = make_docx(text)
+            else:
+                data = make_pdf("" if name == "scan.pdf" else text)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            return self.wfile.write(data)
         if len(parts) == 5 and parts[2] == "eventitems" and parts[4] == "votes":
             return self.send_json(votes.get(int(parts[3]), []))
         self.send_response(404)

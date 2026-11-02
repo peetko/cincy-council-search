@@ -52,6 +52,7 @@
         <button type="button" data-try="abatement*">Tax abatements</button>
         <button type="button" data-vote="@split">Split votes</button>
       </div>
+      <label class="docs-toggle" id="docs-toggle-wrap" hidden><input type="checkbox" id="docs-toggle"> Also search the full text of legislation<button type="button" class="tip" data-tip="docs_search" aria-label="About full-text search">i</button></label>
       <p class="hint"><button type="button" class="browse" data-browse>Or browse everything with filters</button> · Words are matched in any order. Use “quotes” for an exact phrase and * for word endings (zon* finds zoning and rezoning). Hover or tap the <span class="tip-demo" aria-hidden="true">i</span> icons for how Council works.</p>
     </div>
   </div>
@@ -197,6 +198,7 @@
         </div>
       </div>
       <p class="timing" id="timing" aria-live="off"></p>
+      <p class="docs-offer" id="docs-offer" hidden>Not finding it? <button type="button" class="linkish" data-docs-on>Also search the full text of legislation</button></p>
       <div class="card spark" id="spark" hidden>
         <div class="head"><span class="lab"><b>Mentions per quarter</b><button type="button" class="tip" data-tip="spark" aria-label="About this chart">i</button></span><span class="muted" id="spark-range"></span></div>
         <div class="bars" id="spark-bars" role="img"></div>

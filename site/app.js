@@ -12,7 +12,7 @@
   const PAGE = 20;
   const pageSize = () => (!state.q.trim() && !anyFilter()) ? 10 : PAGE;
   const $ = (id) => document.getElementById(id);
-  const state = { q: "", kind: "", body: "", sponsor: "", dept: "", outcome: "", vote: "", topic: "", hood: "", date: "", file: "", item: "", meeting: "", member: "", sort: "newest", offset: 0, period: "year" };
+  const state = { q: "", kind: "", body: "", sponsor: "", dept: "", outcome: "", vote: "", topic: "", hood: "", date: "", file: "", item: "", meeting: "", member: "", sort: "newest", offset: 0, period: "year", docs: "" };
   const FILTERS = ["kind", "body", "sponsor", "dept", "topic", "hood", "outcome", "vote", "date"];
   const FOCUS = ["file", "item", "meeting", "member"];  // set by links (a permalink or a meeting), not by dropdowns
   let stats = null;
@@ -94,6 +94,41 @@
     return dbPromise;
   }
 
+  // The full text of legislation is a second, separate database (docs.db), opened only when
+  // needed, so ordinary searches stay as fast as before.
+  let docsPromise = null, docsAvailable = null;
+  function docsDb() {
+    if (!docsPromise) {
+      const base = new URL(".", location.href);
+      docsPromise = fetch("data/docs-info.json", { cache: "no-cache" })
+        .then((r) => (r.ok ? r.json() : null)).catch(() => null)
+        .then((info) => {
+          docsAvailable = !!info;
+          if (!info) return null;
+          const config = { serverMode: "chunked", requestChunkSize: 65536, databaseLengthBytes: info.databaseLengthBytes,
+            serverChunkSize: info.serverChunkSize, suffixLength: info.suffixLength,
+            urlPrefix: new URL(info.urlPrefix, base).href, cacheBust: info.version };
+          return createDbWorker([{ from: "inline", config }],
+            new URL("vendor/sqlite.worker.js", base).href, new URL("vendor/sql-wasm.wasm", base).href).then((w) => w.db);
+        });
+    }
+    return docsPromise;
+  }
+  async function docsQuery(sql, args) {
+    const d = await docsDb();
+    if (!d) return [];
+    try { return await d.query(sql, args); }
+    catch (e) {
+      if (!isStale(e)) throw e;
+      docsPromise = null;  // republished while open: reconnect once
+      const d2 = await docsDb();
+      return d2 ? d2.query(sql, args) : [];
+    }
+  }
+  // Legislation whose full text matches (ids only; the main search does the rest).
+  const docMatches = (fts) => docsQuery(`SELECT rowid AS m FROM docs_fts WHERE docs_fts MATCH ? ORDER BY rank LIMIT 5000`, [fts])
+    .then((rows) => rows.map((r) => Number(r.m)).filter(Number.isFinite));
+
   // Filters apply to the slim "facets" table (alias f), which keeps searches light.
   function whereClause() {
     const where = [], args = [];
@@ -145,7 +180,7 @@
   const KEY = "COALESCE(f.matter_id, -f.item_id)";
   const marks = (a) => a.map(() => "?").join(",");
 
-  function searchParts() {
+  function searchParts(docMids) {
     const { where, args } = whereClause();
     const fts = ftsQuery(state.q);
     // The default "latest items" view only needs recent meetings; don't group all six years.
@@ -164,9 +199,16 @@
     const W = where.length ? "WHERE " + where.join(" AND ") : "";
     // One row per matching item. "LIMIT -1" stops SQLite from merging this into the grouped
     // query below, which it must not do because bm25() can't run inside a GROUP BY.
-    const hits = `(SELECT ${KEY} AS k, f.event_id AS ev, f.date AS d, f.is_council AS ic, f.seq AS sq`
+    let hits = `(SELECT ${KEY} AS k, f.event_id AS ev, f.date AS d, f.is_council AS ic, f.seq AS sq`
       + (fts ? ", bm25(items_fts, 10.0, 2.0, 2.0, 2.0, 5.0, 3.0, 3.0, 1.0, 1.0, 0.5) AS score" : "")
       + ` FROM ${from} ${W} LIMIT -1)`;
+    if (fts && docMids && docMids.length) {
+      // Also legislation whose full text matches (ids are numbers from our own database, so they
+      // can go straight into the SQL). These rank after matches in the agenda text itself.
+      const W2 = "WHERE " + [`f.matter_id IN (${docMids.join(",")})`, ...where.slice(1)].join(" AND ");
+      hits = `(SELECT * FROM ${hits} UNION ALL SELECT ${KEY}, f.event_id, f.date, f.is_council, f.seq, 0 FROM facets f ${W2} LIMIT -1)`;
+      allArgs = [...allArgs, ...args];
+    }
     return { fts, from, allArgs, order, W, hits };
   }
 
@@ -198,10 +240,15 @@
     }
   }
 
+  let lastDocMids = new Set();
   async function runSearchInner(append) {
     const d = await db();
     if (state.q.trim() && !ftsQuery(state.q)) { renderNothing("Type at least one word or number."); return; }
-    const { fts, allArgs, order, hits } = searchParts();
+    const ftsQ = ftsQuery(state.q);
+    const useDocs = !!(state.docs && ftsQ && !/\{title/.test(ftsQ));
+    const docMids = useDocs ? await docMatches(ftsQ).catch((e) => { console.error(e); return []; }) : null;
+    lastDocMids = new Set(docMids || []);
+    const { fts, allArgs, order, hits } = searchParts(docMids);
     try {
       // Step 1: which 20 pieces of legislation, in what order (reads only the index + facets).
       const groups = await d.query(`SELECT k FROM ${hits} GROUP BY k ORDER BY ${order} LIMIT ${pageSize()} OFFSET ${state.offset}`, allArgs);
@@ -238,6 +285,8 @@
       if (!append) {
         const [c] = await d.query(`SELECT COUNT(DISTINCT k) AS n, COUNT(DISTINCT ev) AS meetings FROM ${hits}`, allArgs);
         renderHead(c.n, c.meetings, !!fts);
+        $("docs-offer").hidden = !(fts && !state.docs && docsAvailable && !/\{title/.test(fts));
+        if (useDocs) $("res-sub").textContent += ", including the full text of legislation";
         if (fts) {
           const q = await d.query(`SELECT substr(d,1,4) AS y, (CAST(substr(d,6,2) AS INTEGER)+2)/3 AS q, COUNT(*) AS n
                                    FROM ${hits} GROUP BY y, q`, allArgs);
@@ -258,6 +307,7 @@
       const snipByKey = new Map();
       snips.forEach((x) => { if (!snipByKey.has(x.k) || /\u0001/.test(x.snip)) snipByKey.set(x.k, x.snip); });
       $("result-list").insertAdjacentHTML("beforeend", keys.map((k) => renderGroup(byKey.get(k), snipByKey.get(k))).join(""));
+      enhanceWithDocs(mids, fts, snipByKey).catch((e) => console.error(e));
     } catch (e) {
       throw e;  // handled (and retried if the data was just updated) in runSearch
     }
@@ -309,7 +359,10 @@
   // Long legislation is cut short in Legistar's title field and ends "(BALANCE ON FILE IN THE CLERK'S
   // OFFICE)": the rest is in the full document. Drop the phrase and show a link to it instead.
   const BALANCE_RX = /\s*\(?\s*balance\s+on\s+file\s+(?:in|with)\s+the\s+clerk['’]?s\s+office\s*\)?\s*\.?\s*$/i;
-  const stripBalance = (t) => (t || "").replace(BALANCE_RX, " …");
+  const stripBalance = (t) => (t || "")
+    .replace(/\s*\((?:statement|exhibit|attachment)s?\s+attached\)\s*\.?/gi, " ")
+    .replace(BALANCE_RX, " …")
+    .replace(/\s*\(\s*B(?:A(?:L(?:A(?:N(?:C(?:E[A-Z\s']*)?)?)?)?)?)?\s*…\s*$/, " …");  // snippet cut mid-phrase
   function balanceLink(r) {
     if (!BALANCE_RX.test(r.title || "")) return "";
     const label = "Rest of the text is in the full document";
@@ -338,29 +391,92 @@
   }
   const isCut = (snip, title) => snip ? /^\s*…|…\s*$/.test(snip) || (title || "").length > snip.length + 40 : (title || "").length > 420;
 
-  // "Show full text": the whole title, plus any notes the minutes recorded at each step (fetched on demand).
+  // "Show full text": the whole legislation text when we have it (from docs.db), otherwise the whole
+  // title, plus any notes the minutes recorded at each step (fetched on demand).
+  const VOTE_PHRASE = /\s*by the following vote\s*:?\s*$/i;
+  function voteLine(rows) {
+    const groups = {};
+    rows.forEach((v) => { (groups[v.value] = groups[v.value] || []).push(v.person.split(" ").slice(-1)[0]); });
+    const order = [["yes", "Yes"], ["no", "No"], ["abstain", "Abstained"], ["remote", "Remote"], ["absent", "Absent"], ["other", "Other"]];
+    return order.filter(([k]) => groups[k]).map(([k, l]) => `<span class="v-${k}"><b>${l} ${groups[k].length}:</b> ${esc(groups[k].join(", "))}</span>`).join(" ");
+  }
   async function toggleFullText(btn) {
     const card = btn.closest("article.result");
     const short = card.querySelector("p.snip"), full = card.querySelector(".fulltext");
     const open = full.hidden;
     full.hidden = !open; short.hidden = open;
-    btn.textContent = open ? "Show less" : "Show full text";
+    const ds = card.querySelector(".doc-snip");
+    if (ds) ds.hidden = open;
+    btn.textContent = open ? "Show less" : (btn.dataset.doc ? "Read the full legislation text" : "Show full text");
     btn.setAttribute("aria-expanded", String(open));
     if (open && !full.dataset.loaded) {
       full.dataset.loaded = "1";
       try {
+        if (btn.dataset.doc) {
+          const [doc] = await docsQuery("SELECT text, source, name, url FROM docs WHERE matter_id = ?", [Number(btn.dataset.doc)]);
+          if (doc && doc.text) {
+            const paras = doc.text.split(/\n{2,}/).map((t) => t.replace(/\s*\n\s*/g, " ").trim()).filter(Boolean);
+            const from = doc.source === "attachment" ? `the attached document${doc.name ? " “" + esc(doc.name) + "”" : ""}` : "Legistar's legislation text";
+            full.querySelector(".title-text").outerHTML = `<div class="doctext">${paras.map((t) => `<p>${highlightTerms(t)}</p>`).join("")}</div>
+              <span class="muted small">Full text from ${from}${doc.url ? ` (<a href="${esc(doc.url)}" target="_blank" rel="noopener">original</a>)` : ""}. Long documents are shortened; the legislation page has the official version.</span>`;
+          }
+        }
         const ids = btn.dataset.ids.split(",").map(Number);
         const d = await db();
-        const rows = await d.query(`SELECT date, body, minutes_note, agenda_note, action_text FROM items WHERE item_id IN (${ids.map(() => "?").join(",")})
+        const rows = await d.query(`SELECT item_id, date, body, minutes_note, agenda_note, action_text FROM items WHERE item_id IN (${ids.map(() => "?").join(",")})
           AND (COALESCE(minutes_note, '') <> '' OR COALESCE(agenda_note, '') <> '' OR COALESCE(action_text, '') <> '') ORDER BY date`, ids);
+        // "…carried by the following vote:" is followed by the roll call in the minutes PDF, not in
+        // the data; fill it in from the recorded votes (or end the sentence if none were recorded).
+        const needVotes = rows.filter((r) => [r.agenda_note, r.action_text, r.minutes_note].some((x) => VOTE_PHRASE.test(x || ""))).map((r) => r.item_id);
+        const votes = {};
+        if (needVotes.length) {
+          (await d.query(`SELECT item_id, person, value FROM votes WHERE item_id IN (${needVotes.map(() => "?").join(",")}) ORDER BY person`, needVotes))
+            .forEach((v) => { (votes[v.item_id] = votes[v.item_id] || []).push(v); });
+        }
+        const noteHtml = (r, x) => {
+          if (!VOTE_PHRASE.test(x)) return `<p>${highlightTerms(x)}</p>`;
+          const vs = votes[r.item_id];
+          return vs && vs.length ? `<p>${highlightTerms(x.replace(/\s*:?\s*$/, ":"))}</p><p class="vote-line">${voteLine(vs)}</p>`
+            : `<p>${highlightTerms(x.replace(VOTE_PHRASE, "."))}</p>`;
+        };
         if (rows.length) {
           full.insertAdjacentHTML("beforeend", `<div class="notes"><b>Notes from the agendas and minutes</b>${rows.map((r) =>
             `<div class="note"><span class="muted small">${esc(fmtDate(r.date))} · ${esc(r.body)}</span>${[r.agenda_note, r.action_text, r.minutes_note].filter(Boolean)
-              .filter((x, i, a) => a.indexOf(x) === i).map((x) => `<p>${highlightTerms(x)}</p>`).join("")}</div>`).join("")}</div>`);
+              .filter((x, i, a) => a.indexOf(x) === i).map((x) => noteHtml(r, x)).join("")}</div>`).join("")}</div>`);
         }
       } catch (e) { console.error(e); }
     }
     if (!open) card.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
+  // After cards render: mark the ones whose full legislation text we have, and for full-text
+  // searches show where in that text the words matched.
+  async function enhanceWithDocs(mids, fts, snipByKey) {
+    if (!mids.length || docsAvailable === false) return;
+    const rows = await docsQuery(`SELECT matter_id FROM docs WHERE status = 'ok' AND matter_id IN (${mids.join(",")})`, []);
+    const have = new Set(rows.map((r) => Number(r.matter_id)));
+    let docSnips = new Map();
+    const want = fts && state.docs ? mids.filter((m) => have.has(m) && lastDocMids.has(m)) : [];
+    if (want.length) {
+      (await docsQuery(`SELECT rowid AS m, snippet(docs_fts, 0, char(1), char(2), ' … ', 32) AS s FROM docs_fts
+                        WHERE docs_fts MATCH ? AND rowid IN (${want.join(",")})`, [fts])).forEach((r) => docSnips.set(Number(r.m), r.s));
+    }
+    document.querySelectorAll("#result-list article.result[data-mid]").forEach((card) => {
+      const mid = Number(card.dataset.mid);
+      if (!have.has(mid) || card.dataset.docDone) return;
+      card.dataset.docDone = "1";
+      const btn = card.querySelector("[data-fulltext]");
+      btn.dataset.doc = mid;
+      btn.hidden = false;
+      btn.textContent = "Read the full legislation text";
+      const bal = card.querySelector(".balance");
+      if (bal) bal.remove();  // the full text is right here now
+      const ds = docSnips.get(mid);
+      if (ds && !/\u0001/.test(snipByKey.get(mid) || "")) {
+        card.querySelector("p.snip").insertAdjacentHTML("afterend",
+          `<p class="doc-snip"><span class="doc-tag" tabindex="0" data-tip="docs_search">In the full text</span> ${highlight(ds)}</p>`);
+      }
+    });
   }
 
   const outcomeTipFor = (r) => /^Passed as emergency|^Emergency clause/.test(r.outcome || "") ? "passed_emergency"
@@ -419,15 +535,15 @@
     } else {
       meta.unshift(`<span><strong>${esc(fmtDate(main.date))}</strong> · ${esc(main.body)}</span>`);
     }
-    return `<article class="card result">
+    return `<article class="card result" data-mid="${main.matter_id || ""}">
       <div class="tags">
         <span class="kind" tabindex="0" data-tip="${GLOSSARY[main.kind] ? main.kind : "other"}">${esc(KIND_LABEL[main.kind] || "Item")}</span>
         ${main.matter_file ? `<span class="file mono" tabindex="0" data-tip="file_number" style="cursor:help">${esc(main.matter_file)}</span>` : ""}
         ${head.outcome ? `<span class="outcome" tabindex="0" data-tip="${outcomeTipFor(head)}">${icon}${esc(head.outcome)}${steps.length > 1 ? ` · ${esc(fmtDate(head.date))}` : ""}</span>` : ""}
       </div>
       <p class="snip">${highlight(snip, main.title)}</p>
-      ${isCut(snip, main.title) ? `<div class="fulltext" hidden><p>${highlightTerms(stripBalance(main.title))}</p></div>
-      <button type="button" class="linkish read-more" data-fulltext data-ids="${steps.map((r) => r.item_id).join(",")}" aria-expanded="false">Show full text</button>` : ""}
+      <div class="fulltext" hidden><p class="title-text">${highlightTerms(stripBalance(main.title))}</p></div>
+      <button type="button" class="linkish read-more" data-fulltext data-ids="${steps.map((r) => r.item_id).join(",")}" aria-expanded="false"${isCut(snip, main.title) ? "" : " hidden"}>Show full text</button>
       ${balanceLink(main)}
       ${dissentBox(decisive)}
       <div class="meta">${meta.join("")}</div>
@@ -818,7 +934,7 @@
   }
 
   // ------------------------------------------------------------- state <-> URL
-  const KEYS = ["q", ...FILTERS, ...FOCUS, "sort"];
+  const KEYS = ["q", ...FILTERS, ...FOCUS, "sort", "docs"];
   // Make the dropdowns show the current filters; a custom date range gets its own option.
   function syncFilterControls(dateLabel) {
     const sel = $("f-date");
@@ -844,6 +960,7 @@
     const p = new URLSearchParams(location.search);
     KEYS.forEach((k) => { if (p.has(k)) state[k] = p.get(k); });
     $("q").value = state.q;
+    $("docs-toggle").checked = !!state.docs;
     syncFilterControls();
   }
   function writeUrl() {
@@ -946,6 +1063,9 @@
   function bind() {
     $("search-form").addEventListener("submit", (e) => { e.preventDefault(); FOCUS.forEach((k) => { state[k] = ""; }); state.q = $("q").value; search(); });
     window.addEventListener("hashchange", route);
+    const setDocs = (on) => { state.docs = on ? "1" : ""; $("docs-toggle").checked = on; if (state.q.trim() || $("q").value.trim()) search(); else writeUrl(); };
+    $("docs-toggle").addEventListener("change", (e) => setDocs(e.target.checked));
+    document.addEventListener("click", (e) => { if (e.target.closest("[data-docs-on]")) setDocs(true); });
     window.addEventListener("popstate", route);
     $("filters-toggle").addEventListener("click", () => setFiltersOpen(!filtersOpen));
     document.addEventListener("click", (e) => {
@@ -1293,6 +1413,7 @@
       await db();
       if (view === "search") search(); else updateHome();  // opened on another page: don't jump to results
       setTimeout(() => { if (!analysisLoading) analysisLoading = loadAnalysis(); }, 1500);  // for the home-card teaser
+      docsDb().then(() => { $("docs-toggle-wrap").hidden = !docsAvailable; }).catch(() => {});
       renderUpcoming().catch((e) => console.error(e));
     } catch (e) {
       console.error(e);
