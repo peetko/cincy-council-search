@@ -444,3 +444,12 @@ body.inner .docs-toggle { display: none; }
 .doctext p { font-size: 15px !important; }
 .vote-line { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px !important; }
 .vote-line .v-no b { color: #9f0b24; }
+.hood-row { grid-template-columns: minmax(0, 150px) minmax(0, 1fr) 32px 40px; }
+.hood-row .bar { position: relative; }
+.hood-row .bar .prev { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: #6b7280; border-radius: 1px; }
+.hood-row .dl { font-size: 12px; font-weight: 600; color: var(--ink-3); text-align: right; font-variant-numeric: tabular-nums; }
+.hood-row .dl.up { color: var(--navy); }
+.hood-key { display: grid; grid-template-columns: minmax(0, 150px) minmax(0, 1fr) 32px 40px; gap: 10px; padding: 0 6px 4px; font-size: 11px; color: var(--ink-3); }
+.hood-key span:nth-child(2) { display: inline-flex; align-items: center; gap: 6px; }
+.hood-key i { width: 2px; height: 12px; background: #6b7280; display: inline-block; }
+.hood-key span:last-child { text-align: right; }

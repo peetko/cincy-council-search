@@ -777,9 +777,15 @@
 
     // Ranked list (also the fallback when the map can't be drawn)
     const top = rows.filter((r) => r.cur > 0).sort((a, b) => b.cur - a.cur).slice(0, 12);
-    const max = Math.max(1, ...top.map((r) => r.cur));
-    $("hood-list").innerHTML = top.length ? top.map((r) => `<li><button type="button" class="hood-row" data-go='${go(r.name)}' aria-label="${esc(r.name)}: ${r.cur} items. Show them.">
-        <span class="n">${esc(r.name)}</span><span class="bar"><span style="width:${(r.cur / max) * 100}%"></span></span><span class="v">${r.cur}</span></button></li>`).join("")
+    const max = Math.max(1, ...top.map((r) => Math.max(r.cur, r.prev || 0)));
+    const prevLabel = p.short.split(" vs. ")[1] || "a year earlier";
+    const delta = (r) => {
+      const d = r.cur - (r.prev || 0);
+      return d > 0 ? `<span class="dl up">▲${d}</span>` : d < 0 ? `<span class="dl down">▼${-d}</span>` : `<span class="dl">–</span>`;
+    };
+    $("hood-list").innerHTML = top.length ? `<li class="hood-key" aria-hidden="true"><span></span><span><i></i>${esc(prevLabel)}, same stretch</span><span></span><span>Change</span></li>` + top.map((r) => `<li><button type="button" class="hood-row" data-go='${go(r.name)}'
+        title="${esc(r.name)}: ${r.cur} items vs. ${r.prev || 0} in ${esc(prevLabel)}. Click to see them." aria-label="${esc(r.name)}: ${r.cur} items, ${r.prev || 0} in ${esc(prevLabel)}. Show them.">
+        <span class="n">${esc(r.name)}</span><span class="bar"><span style="width:${(r.cur / max) * 100}%"></span>${r.prev ? `<i class="prev" style="left:${(r.prev / max) * 100}%"></i>` : ""}</span><span class="v">${r.cur}</span>${delta(r)}</button></li>`).join("")
       : `<li class="empty">No neighborhood mentions in this period yet.</li>`;
 
     const shapes = await loadHoodShapes();
