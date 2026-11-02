@@ -197,3 +197,5 @@ button.tip:hover, button.tip[aria-expanded="true"] { color: var(--red); }
 .count-btn { font: inherit; font-variant-numeric: tabular-nums; color: var(--link); background: none; border: 0; padding: 4px 2px; min-height: 32px; cursor: pointer; text-decoration: underline; }
 .count-btn:disabled { color: var(--ink-3); text-decoration: none; cursor: default; }
 .kpi-link { font: inherit; font-size: 13px; font-weight: 700; color: var(--link); background: none; border: 0; padding: 4px 0 0; cursor: pointer; text-align: left; text-decoration: underline; }
+
+.plot .col .novotes { align-self: flex-end; margin-bottom: 6px; font-size: 11px; font-weight: 600; color: var(--ink-3); writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; cursor: help; }

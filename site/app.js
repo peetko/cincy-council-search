@@ -49,12 +49,22 @@
   function db() {
     if (!dbPromise) {
       const base = new URL(".", location.href);
-      dbPromise = createDbWorker(
-        [{ from: "inline", config: { serverMode: "full", url: new URL("data/council.db", base).href, requestChunkSize: 4096,
-          cacheBust: (stats && stats.updated_at) || String(Date.now()) } }],
-        new URL("vendor/sqlite.worker.js", base).href,
-        new URL("vendor/sql-wasm.wasm", base).href
-      ).then((w) => w.db);
+      // db-info.json (written by scripts/split_db.py) says how the database is split into
+      // pieces and its exact size, so the page never has to ask the server for it.
+      dbPromise = fetch("data/db-info.json", { cache: "no-cache" })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null)
+        .then((info) => {
+          const cacheBust = (info && info.version) || (stats && stats.updated_at) || String(Date.now());
+          const config = info
+            ? { serverMode: "chunked", requestChunkSize: 4096, databaseLengthBytes: info.databaseLengthBytes,
+                serverChunkSize: info.serverChunkSize, suffixLength: info.suffixLength,
+                urlPrefix: new URL(info.urlPrefix, base).href, cacheBust }
+            : { serverMode: "full", url: new URL("data/council.db", base).href, requestChunkSize: 4096, cacheBust };
+          return createDbWorker([{ from: "inline", config }],
+            new URL("vendor/sqlite.worker.js", base).href, new URL("vendor/sql-wasm.wasm", base).href);
+        })
+        .then((w) => w.db);
     }
     return dbPromise;
   }
@@ -282,6 +292,14 @@
         <div style="height:${(m.cur[i] / top) * 100}%;background:var(--series-cur)"></div></div>`).join("");
     $("month-plot").innerHTML = grid + `<div class="cols" role="img" aria-label="${esc(m.labels.map((l, i) => `${l}: ${m.cur[i]} vs ${m.prev[i]}`).join("; "))}">${cols}</div>`;
     $("month-x").innerHTML = m.labels.map((l) => `<span>${l}</span>`).join("");
+    // Label past months with no passage votes in either year (usually Council's July summer break).
+    const empties = m.labels.map((l, i) => (i < m.labels.length - 1 && !m.cur[i] && !m.prev[i]) ? i : -1).filter((i) => i >= 0);
+    if (empties.length) {
+      const cols = $("month-plot").querySelectorAll(".col");
+      empties.forEach((i) => {
+        cols[i].innerHTML = `<span class="novotes" tabindex="0" data-tip="no_votes_month">No votes</span>`;
+      });
+    }
   }
 
   function renderPeriod() {
@@ -488,7 +506,8 @@
     } catch (e) {
       console.error(e);
       $("res-h").textContent = "The database could not be loaded";
-      renderNothing("The data file is missing or still being built. If you just set this up, wait for the first “Update council data” run to finish on GitHub, then reload.");
+      renderNothing("The data file is missing or still being built. If you just set this up, wait for the first “Update council data” run to finish on GitHub, then reload."
+        + `<br><span class="muted" style="font-size:13px">Technical detail: ${esc(e && e.message ? e.message : e)}</span>`);
     }
   }
 

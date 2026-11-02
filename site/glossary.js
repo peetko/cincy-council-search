@@ -44,6 +44,7 @@ window.GLOSSARY = {
   kpi_present: ["Average members present", "On each final-passage vote, how many of the 9 members cast a vote (yes, no or abstain), averaged over the year. Excused absences count as absent."],
   kpi_unanimous: ["Unanimous final votes", "Share of final-passage votes with no “no” votes. Council usually votes together; click to see the split votes."],
   chart_monthly: ["Ordinances per month", "Distinct ordinances passed at full Council each month, this year against last year. The current month counts only the days so far, compared with the same days a year ago."],
+  no_votes_month: ["No votes this month", "Full Council passed no ordinances this month in either year. Council usually takes a summer break in July after passing the City budget in June, which is why June is so busy."],
   chart_topics: ["Topics", "Items are tagged with topics by keyword (for example, “streetcar” means Transit & streets). Each piece of legislation counts once even if it appears at several meetings. Compared with the same days a year earlier."],
   chart_members: ["How members voted", "Final-passage roll calls only. Votes to suspend the three readings or on an emergency clause aren't counted."],
   col_present: ["Present", "Share of final-passage votes where the member was there and voted (yes, no or abstain)."],

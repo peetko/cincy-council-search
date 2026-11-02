@@ -79,6 +79,7 @@ You need Python 3.10 or newer. There's nothing to install: the scripts use only 
 python scripts/collect.py --max-events 30   # quick trial: the 30 most recent meetings
 python scripts/build_stats.py
 python scripts/report.py                    # data check
+python scripts/split_db.py                  # cut the database into pieces for the website
 python scripts/serve.py                     # then open http://localhost:8000
 ```
 
@@ -100,6 +101,7 @@ scripts/collect.py             download from Legistar into SQLite
 scripts/build_stats.py         compute site/data/stats.json
 scripts/alerts.py              email digests for watched terms
 scripts/report.py              data check
+scripts/split_db.py            cut the database into pieces the website can read
 scripts/serve.py               local preview server
 site/                          the website (index.html, styles.css, app.js, glossary.js, vendor/)
 tests/fake_legistar.py         a fake Legistar API used for testing

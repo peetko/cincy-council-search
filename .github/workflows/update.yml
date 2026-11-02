@@ -70,6 +70,9 @@ jobs:
           SITE_URL: ${{ steps.pages.outputs.base_url }}
         run: python scripts/alerts.py
 
+      - name: Split the database into pieces for the website
+        run: python scripts/split_db.py
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
