@@ -210,3 +210,27 @@ button.tip:hover, button.tip[aria-expanded="true"] { color: var(--red); }
 .kpi-link { font: inherit; font-size: 13px; font-weight: 700; color: var(--link); background: none; border: 0; padding: 4px 0 0; cursor: pointer; text-align: left; text-decoration: underline; }
 
 .plot .col .novotes { align-self: flex-end; margin-bottom: 6px; font-size: 11px; font-weight: 600; color: var(--ink-3); writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; cursor: help; }
+
+/* ---------- legislation cards, links, upcoming ---------- */
+.linkish { font: inherit; font-weight: 600; color: var(--link); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
+.sorter .csv { margin-left: 8px; font-size: 14px; }
+details.timeline { border-left: 3px solid var(--badge); padding-left: 12px; }
+details.timeline summary { cursor: pointer; font-size: 14px; font-weight: 600; color: var(--ink-2); min-height: 28px; display: flex; align-items: center; }
+details.timeline ol { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+details.timeline li { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto auto; gap: 4px 12px; align-items: baseline; font-size: 14px; }
+details.timeline li .when { font-weight: 600; font-variant-numeric: tabular-nums; }
+details.timeline li .where { color: var(--ink-2); min-width: 0; }
+details.timeline li .what { font-weight: 600; cursor: help; }
+details.timeline li.more-steps { display: block; color: var(--ink-3); font-style: italic; }
+@media (max-width: 640px) { details.timeline li { grid-template-columns: 1fr auto; } details.timeline li .where { grid-column: 1 / -1; order: 3; } }
+.upcoming { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; border-top: 3px solid var(--red); }
+.upcoming h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-2); }
+.upcoming ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.upcoming li { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; border-top: 1px solid var(--grid); padding-top: 6px; }
+.upcoming li:first-child { border-top: 0; padding-top: 0; }
+.upcoming button.meeting { font: inherit; color: inherit; text-align: left; background: none; border: 0; padding: 4px 0; cursor: pointer; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.upcoming button.meeting:hover .b { color: var(--link); text-decoration: underline; }
+.upcoming .d { font-size: 12px; font-weight: 700; color: var(--red); text-transform: uppercase; letter-spacing: 0.03em; }
+.upcoming .b { font-size: 14px; font-weight: 700; }
+.upcoming .n { font-size: 13px; color: var(--ink-2); }
+.upcoming .pdf { font-size: 13px; font-weight: 600; white-space: nowrap; padding-top: 4px; }

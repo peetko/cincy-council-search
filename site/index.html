@@ -25,6 +25,7 @@
       </a>
       <nav class="main" aria-label="Main">
         <a href="#search" class="on">Search</a>
+        <a href="#upcoming">Coming up</a>
         <a href="#trends">Trends</a>
         <a href="#members">Members</a>
         <a href="#about">About the data</a>
@@ -137,6 +138,7 @@
           <button type="button" data-sort="newest" aria-pressed="true">newest</button>
           <button type="button" data-sort="relevance" aria-pressed="false">relevance</button>
           <button type="button" class="tip" data-tip="relevance" aria-label="About sorting by relevance">i</button>
+          <button type="button" class="linkish csv" id="csv" hidden>Download CSV</button>
         </div>
       </div>
       <div class="card spark" id="spark" hidden>
@@ -149,6 +151,10 @@
     </section>
 
     <aside class="kpis" aria-labelledby="kpi-h">
+      <section class="card upcoming" id="upcoming" aria-labelledby="upcoming-h">
+        <h2 id="upcoming-h">Coming up at City Hall</h2>
+        <ul id="upcoming-list"><li class="empty">Loading…</li></ul>
+      </section>
       <h2 id="kpi-h">This year so far</h2>
       <div id="kpi-list"></div>
     </aside>

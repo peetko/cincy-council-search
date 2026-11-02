@@ -2,7 +2,8 @@
 
 A free, searchable record of Cincinnati City Council and committee meetings since July 2020, with running statistics and optional email alerts when a subject you care about shows up on an agenda.
 
-- **Search** every agenda and minutes item: ordinances, resolutions, motions, communications. Filter by type, meeting body, sponsor, department, outcome and date. Each result links to the minutes or agenda PDF, the Legistar legislation page, and the roll-call votes.
+- **Coming up at City Hall**: the next two weeks of Council and committee meetings; click one to see its agenda.
+- **Search** every agenda and minutes item, grouped into one card per piece of legislation with its history (committee → Council → final vote). Every card has a shareable link, a "copy citation" button, and any result list downloads as CSV. Search covers ordinances, resolutions, motions, communications. Filter by type, meeting body, sponsor, department, outcome and date. Each result links to the minutes or agenda PDF, the Legistar legislation page, and the roll-call votes.
 - **Running stats**: what's passed this year compared with last year, which topics are coming up more or less often (month, quarter or year), and how each member voted.
 - **Split votes**: Council votes are usually unanimous, so the site makes the exceptions easy to find. Filter to any split vote, or click a member's "No / abstain" count to see exactly what they opposed.
 - **Built-in explainers**: hover over or tap the ⓘ icons, item types and outcomes to learn how Council works: what an ordinance is, what "passed as an emergency" means, the three-readings rule, and more.

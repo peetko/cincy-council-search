@@ -39,6 +39,7 @@ events, items, votes = [], {}, {}
 
 def build():
     rnd = random.Random(42)
+    pending = []  # committee items waiting for a full-Council vote
     eid = iid = mid = 1000
     d = dt.date(2020, 6, 29)
     end = TODAY + dt.timedelta(days=21)
@@ -68,9 +69,15 @@ def build():
                         "EventItemMatterFile": None, "EventItemMatterId": None, "EventItemActionName": None})
             for k in range(rnd.randint(10, 14) if council else rnd.randint(3, 6)):
                 iid += 1
-                mid += 1
-                kind = rnd.choices(["ORDINANCE", "RESOLUTION", "MOTION", "COMMUNICATION"], [5, 2, 3, 1])[0]
-                subj, dept = rnd.choice(SUBJECTS)
+                reuse = council and pending and rnd.random() < 0.6
+                if reuse:
+                    r_mid, r_kind, r_subj, r_dept, r_title, r_day = pending.pop(0)
+                    mid_this, kind, subj, dept = r_mid, r_kind, r_subj, r_dept
+                else:
+                    mid += 1
+                    mid_this = mid
+                    kind = rnd.choices(["ORDINANCE", "RESOLUTION", "MOTION", "COMMUNICATION"], [5, 2, 3, 1])[0]
+                    subj, dept = rnd.choice(SUBJECTS)
                 if kind == "MOTION":
                     s1, s2 = rnd.sample(MEMBERS, 2)
                     title = (f"MOTION, submitted by Councilmembers {s1[-1]}son and {s2[-1]}ford, WE MOVE that the "
@@ -87,6 +94,10 @@ def build():
                              f"Woerner, City Solicitor, EXPRESSING the support of Council for {subj}.")
                 else:
                     title = f"COMMUNICATION, submitted by the Clerk of Council regarding {subj}."
+                if reuse:
+                    title = r_title
+                elif not council and kind != "COMMUNICATION":
+                    pending.append((mid_this, kind, subj, dept, title, day))
                 final_vote = council and past and kind in ("ORDINANCE", "RESOLUTION") and rnd.random() < 0.85
                 passed = None
                 action = None
@@ -106,8 +117,8 @@ def build():
                       "EventItemRollCallFlag": 1 if final_vote else 0, "EventItemTally": None,
                       "EventItemAgendaNote": None, "EventItemMinutesNote": None,
                       "EventItemMover": rnd.choice(MEMBERS) if final_vote else None, "EventItemSeconder": None,
-                      "EventItemMatterId": mid, "EventItemMatterGuid": f"M-{mid}",
-                      "EventItemMatterFile": f"{day.year}{mid % 100000:05d}",
+                      "EventItemMatterId": mid_this, "EventItemMatterGuid": f"M-{mid_this}",
+                      "EventItemMatterFile": f"{(r_day if reuse else day).year}{mid_this % 100000:05d}",
                       "EventItemMatterName": None, "EventItemMatterType": kind.title(),
                       "EventItemMatterStatus": "Passed" if passed == 1 else "Pending",
                       "EventItemLastModifiedUtc": ev["EventLastModifiedUtc"]}

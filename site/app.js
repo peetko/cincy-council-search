@@ -11,8 +11,9 @@
 
   const PAGE = 20;
   const $ = (id) => document.getElementById(id);
-  const state = { q: "", kind: "", body: "", sponsor: "", dept: "", outcome: "", vote: "", topic: "", date: "", sort: "newest", offset: 0, period: "year" };
+  const state = { q: "", kind: "", body: "", sponsor: "", dept: "", outcome: "", vote: "", topic: "", date: "", file: "", item: "", meeting: "", sort: "newest", offset: 0, period: "year" };
   const FILTERS = ["kind", "body", "sponsor", "dept", "topic", "outcome", "vote", "date"];
+  const FOCUS = ["file", "item", "meeting"];  // set by links (a permalink or a meeting), not by dropdowns
   let stats = null;
   let dbPromise = null;
 
@@ -72,6 +73,9 @@
   // Filters apply to the slim "facets" table (alias f), which keeps searches light.
   function whereClause() {
     const where = [], args = [];
+    if (state.file) { where.push("f.matter_file = ?"); args.push(state.file); }
+    if (state.item) { where.push("f.item_id = ?"); args.push(Number(state.item)); }
+    if (state.meeting) { where.push("f.event_id = ?"); args.push(Number(state.meeting)); }
     if (state.kind) { where.push("f.kind = ?"); args.push(state.kind); }
     if (state.body === "@council") where.push("f.is_council = 1");
     else if (state.body === "@committees") where.push("f.is_council = 0");
@@ -101,62 +105,82 @@
     return { where, args };
   }
 
-  const COLS = `i.item_id, i.date, i.body, i.kind, i.matter_file, i.title, i.outcome, i.outcome_cat, i.yes_count, i.action,
+  const COLS = `i.item_id, i.matter_id, i.date, i.body, i.kind, i.matter_file, i.title, i.outcome, i.outcome_cat, i.yes_count, i.action,
     (SELECT dissent FROM facets WHERE facets.item_id = i.item_id) AS dissent,
     i.sponsors, i.departments, i.matter_url, m.minutes_url, m.agenda_url, m.video_url, m.page_url`;
 
-  async function runSearch(append) {
-    const d = await db();
+  // Results are grouped by piece of legislation (its Legistar file), so an ordinance that went
+  // through committee and then Council appears once, with its history as a timeline.
+  const KEY = "COALESCE(f.matter_id, -f.item_id)";
+  const marks = (a) => a.map(() => "?").join(",");
+
+  function searchParts() {
     const { where, args } = whereClause();
     const fts = ftsQuery(state.q);
-    if (state.q.trim() && !fts) { renderNothing("Type at least one word or number."); return; }
-    let from, order, allArgs;
+    let from, allArgs, order;
     if (fts) {
       from = "items_fts JOIN facets f ON f.item_id = items_fts.rowid";
       where.unshift("items_fts MATCH ?");
       allArgs = [fts, ...args];
-      order = state.sort === "relevance" ? "bm25(items_fts, 10.0, 2.0, 2.0, 2.0, 5.0, 3.0, 3.0, 1.0, 1.0, 0.5)" : "f.date DESC, f.is_council DESC, f.seq";
+      order = state.sort === "relevance" ? "MIN(score)" : "MAX(d) DESC, MAX(ic) DESC";
     } else {
       from = "facets f";
       allArgs = args;
-      order = "f.date DESC, f.is_council DESC, f.seq";
+      order = state.meeting ? "MIN(sq)" : "MAX(d) DESC, MAX(ic) DESC, MIN(sq)";
     }
     const W = where.length ? "WHERE " + where.join(" AND ") : "";
+    // One row per matching item. "LIMIT -1" stops SQLite from merging this into the grouped
+    // query below, which it must not do because bm25() can't run inside a GROUP BY.
+    const hits = `(SELECT ${KEY} AS k, f.event_id AS ev, f.date AS d, f.is_council AS ic, f.seq AS sq`
+      + (fts ? ", bm25(items_fts, 10.0, 2.0, 2.0, 2.0, 5.0, 3.0, 3.0, 1.0, 1.0, 0.5) AS score" : "")
+      + ` FROM ${from} ${W} LIMIT -1)`;
+    return { fts, from, allArgs, order, W, hits };
+  }
+
+  async function runSearch(append) {
+    const d = await db();
+    if (state.q.trim() && !ftsQuery(state.q)) { renderNothing("Type at least one word or number."); return; }
+    const { fts, allArgs, order, hits } = searchParts();
     try {
-      // Step 1: which 20 items, in what order (reads only the search index + facets).
-      const idRows = await d.query(`SELECT f.item_id AS id FROM ${from} ${W} ORDER BY ${order} LIMIT ${PAGE} OFFSET ${state.offset}`, allArgs);
-      const ids = idRows.map((r) => r.id);
-      // Step 2: full text and links for just those items.
-      let rows = [];
-      if (ids.length) {
-        const marks = ids.map(() => "?").join(",");
-        rows = fts
-          ? await d.query(`SELECT ${COLS}, snippet(items_fts, -1, char(1), char(2), ' … ', 60) AS snip
-                           FROM items_fts JOIN items i ON i.item_id = items_fts.rowid JOIN meetings m ON m.event_id = i.event_id
-                           WHERE items_fts MATCH ? AND items_fts.rowid IN (${marks})`, [fts, ...ids])
-          : await d.query(`SELECT ${COLS}, NULL AS snip FROM items i JOIN meetings m ON m.event_id = i.event_id
-                           WHERE i.item_id IN (${marks})`, ids);
-        const pos = new Map(ids.map((id, n) => [id, n]));
-        rows.sort((a, b) => pos.get(a.item_id) - pos.get(b.item_id));
+      // Step 1: which 20 pieces of legislation, in what order (reads only the index + facets).
+      const groups = await d.query(`SELECT k FROM ${hits} GROUP BY k ORDER BY ${order} LIMIT ${PAGE} OFFSET ${state.offset}`, allArgs);
+      const keys = groups.map((g) => g.k);
+      const mids = keys.filter((k) => k > 0), lone = keys.filter((k) => k < 0).map((k) => -k);
+      // Step 2: every step in those pieces' histories, plus highlighted snippets of the matches.
+      let steps = [], snips = [];
+      if (keys.length) {
+        steps = await d.query(`SELECT ${COLS} FROM items i JOIN meetings m ON m.event_id = i.event_id
+                               WHERE i.matter_id IN (${marks(mids)}) OR i.item_id IN (${marks(lone)})
+                               ORDER BY i.date, i.is_council, i.seq`, [...mids, ...lone]);
+        if (fts) snips = await d.query(`SELECT i.item_id, COALESCE(i.matter_id, -i.item_id) AS k,
+                                          snippet(items_fts, -1, char(1), char(2), ' … ', 60) AS snip
+                                        FROM items_fts JOIN items i ON i.item_id = items_fts.rowid
+                                        WHERE items_fts MATCH ? AND (i.matter_id IN (${marks(mids)}) OR i.item_id IN (${marks(lone)}))`,
+                                       [fts, ...mids, ...lone]);
       }
       if (!append) {
-        const [c] = await d.query(`SELECT COUNT(*) AS n, COUNT(DISTINCT f.event_id) AS meetings FROM ${from} ${W}`, allArgs);
+        const [c] = await d.query(`SELECT COUNT(DISTINCT k) AS n, COUNT(DISTINCT ev) AS meetings FROM ${hits}`, allArgs);
         renderHead(c.n, c.meetings, !!fts);
         if (fts) {
-          const q = await d.query(`SELECT substr(f.date,1,4) AS y, (CAST(substr(f.date,6,2) AS INTEGER)+2)/3 AS q, COUNT(*) AS n
-                                   FROM ${from} ${W} GROUP BY y, q`, allArgs);
+          const q = await d.query(`SELECT substr(d,1,4) AS y, (CAST(substr(d,6,2) AS INTEGER)+2)/3 AS q, COUNT(*) AS n
+                                   FROM ${hits} GROUP BY y, q`, allArgs);
           renderSpark(q);
         } else {
           $("spark").hidden = true;
         }
         $("result-list").innerHTML = "";
-        if (!c.n) renderNothing(fts ? "No items match. Try fewer words, a word ending with *, or clear the filters." : "No items match these filters.");
+        $("csv").hidden = !c.n;
+        if (!c.n) renderNothing(fts ? "Nothing matches. Try fewer words, a word ending with *, or clear the filters." : "Nothing matches these filters.");
         $("more").hidden = c.n <= state.offset + PAGE;
         $("more").dataset.total = c.n;
       } else {
         $("more").hidden = Number($("more").dataset.total) <= state.offset + PAGE;
       }
-      $("result-list").insertAdjacentHTML("beforeend", rows.map(renderResult).join(""));
+      const byKey = new Map(keys.map((k) => [k, []]));
+      steps.forEach((r) => { const k = r.matter_id || -r.item_id; if (byKey.has(k)) byKey.get(k).push(r); });
+      const snipByKey = new Map();
+      snips.forEach((x) => { if (!snipByKey.has(x.k) || /\u0001/.test(x.snip)) snipByKey.set(x.k, x.snip); });
+      $("result-list").insertAdjacentHTML("beforeend", keys.map((k) => renderGroup(byKey.get(k), snipByKey.get(k))).join(""));
     } catch (e) {
       console.error(e);
       renderNothing("That search could not run. Try removing punctuation. (" + esc(e.message || e) + ")");
@@ -165,15 +189,19 @@
 
   // ------------------------------------------------------------- rendering: search
   function renderHead(n, meetings, isSearch) {
+    const things = (x) => `${x.toLocaleString()} ${x === 1 ? "item" : "items"}`;
     let h;
-    if (isSearch) h = `${n.toLocaleString()} result${n === 1 ? "" : "s"} for “${esc(state.q.trim())}”`;
+    if (state.file) h = `File ${esc(state.file)}`;
+    else if (state.meeting) h = esc($("res-h").dataset.meetingTitle || "Meeting agenda");
+    else if (isSearch) h = `${n.toLocaleString()} result${n === 1 ? "" : "s"} for “${esc(state.q.trim())}”`;
     else if (state.vote === "@split") h = `${n.toLocaleString()} split vote${n === 1 ? "" : "s"}`;
-    else if (state.vote) h = `${n.toLocaleString()} vote${n === 1 ? "" : "s"} where ${esc(state.vote)} voted no or abstained`;
-    else h = anyFilter() ? `${n.toLocaleString()} matching items` : "Latest agenda and minutes items";
+    else if (state.vote) h = `${things(n)} where ${esc(state.vote)} voted no or abstained`;
+    else h = anyFilter() ? `${things(n)} match` : "Latest agenda and minutes items";
+    if (state.file && n === 0) h = `File ${esc(state.file)} not found`;
     $("res-h").innerHTML = h;
     $("res-sub").textContent = `in ${meetings.toLocaleString()} meeting${meetings === 1 ? "" : "s"}`;
-    $("sorter").hidden = !isSearch && !n;
-    document.querySelectorAll("#sorter button").forEach((b) => { b.hidden = !isSearch; b.setAttribute("aria-pressed", String(b.dataset.sort === state.sort)); });
+    $("sorter").hidden = !n;
+    document.querySelectorAll("#sorter button[data-sort]").forEach((b) => { b.hidden = !isSearch; b.setAttribute("aria-pressed", String(b.dataset.sort === state.sort)); });
     document.querySelector("#sorter .sortlabel").hidden = !isSearch;
     document.querySelector('#sorter [data-tip="relevance"]').hidden = !isSearch;
   }
@@ -194,41 +222,74 @@
     return esc(text).replace(/\u0001/g, "<mark>").replace(/\u0002/g, "</mark>");
   }
 
-  function renderResult(r) {
-    const icon = { passed: ICON_CHECK, failed: ICON_X, referred: ICON_ARROW, scheduled: ICON_CAL }[r.outcome_cat] || "";
-    const outcomeLabel = r.outcome;
-    const outcomeTip = /^Passed as emergency|^Emergency clause/.test(r.outcome || "") ? "passed_emergency"
-      : /^Three readings/.test(r.outcome || "") ? "three_readings"
-      : (GLOSSARY[r.outcome_cat] ? r.outcome_cat : "outcome");
-    let dissent = "";
-    if (r.dissent) {
-      const no = [], ab = [];
-      r.dissent.split("; ").forEach((x) => { const [who, v] = x.split("|"); (v === "no" ? no : ab).push(who); });
-      dissent = `<div class="dissent"><span class="lab"><b>Split vote</b><button type="button" class="tip" data-tip="dissent" aria-label="About split votes">i</button></span>`
-        + (no.length ? `<span class="who"><b>Voted no:</b> ${esc(no.join(", "))}</span>` : "")
-        + (ab.length ? `<span class="who"><b>Abstained:</b> ${esc(ab.join(", "))}</span>` : "") + `</div>`;
-    }
+  const outcomeTipFor = (r) => /^Passed as emergency|^Emergency clause/.test(r.outcome || "") ? "passed_emergency"
+    : /^Three readings/.test(r.outcome || "") ? "three_readings"
+    : (GLOSSARY[r.outcome_cat] ? r.outcome_cat : "outcome");
+  const OUTCOME_ICON = { passed: ICON_CHECK, failed: ICON_X, referred: ICON_ARROW, scheduled: ICON_CAL };
+
+  function dissentBox(r) {
+    if (!r || !r.dissent) return "";
+    const no = [], ab = [];
+    r.dissent.split("; ").forEach((x) => { const [who, v] = x.split("|"); (v === "no" ? no : ab).push(who); });
+    return `<div class="dissent"><span class="lab"><b>Split vote</b><button type="button" class="tip" data-tip="dissent" aria-label="About split votes">i</button></span>`
+      + (no.length ? `<span class="who"><b>Voted no:</b> ${esc(no.join(", "))}</span>` : "")
+      + (ab.length ? `<span class="who"><b>Abstained:</b> ${esc(ab.join(", "))}</span>` : "") + `</div>`;
+  }
+
+  function citation(r) {
+    const kind = KIND_LABEL[r.kind] || "Item";
+    const what = r.outcome_cat === "passed" ? `${r.outcome.replace(/ \d+–\d+$/, "").toLowerCase()} ${fmtDate(r.date)}` : `${r.body}, ${fmtDate(r.date)}`;
+    return `Cincinnati City Council, ${kind}${r.matter_file ? " " + r.matter_file : ""}, ${what}. ${permalink(r)}`;
+  }
+  const permalink = (r) => {
+    const u = new URL(location.pathname, location.origin);
+    if (r.matter_file) u.searchParams.set("file", r.matter_file); else u.searchParams.set("item", r.item_id);
+    return u.href;
+  };
+
+  // One card per piece of legislation. `steps` are its agenda appearances in date order.
+  function renderGroup(steps, snip) {
+    if (!steps || !steps.length) return "";
+    const decisive = [...steps].reverse().find((r) => r.outcome_cat === "passed" || r.outcome_cat === "failed");
+    const latest = steps[steps.length - 1];
+    const main = decisive || latest;
+    const head = latest.outcome_cat === "scheduled" ? latest : main;
+    const icon = OUTCOME_ICON[head.outcome_cat] || "";
     const links = [];
-    if (r.minutes_url) links.push(`<a href="${esc(r.minutes_url)}" target="_blank" rel="noopener">Minutes PDF</a>`);
-    else if (r.agenda_url) links.push(`<a href="${esc(r.agenda_url)}" target="_blank" rel="noopener">Agenda PDF</a>`);
-    if (r.matter_url) links.push(`<a href="${esc(r.matter_url)}" target="_blank" rel="noopener">Legislation page</a>`);
-    if (r.page_url) links.push(`<a href="${esc(r.page_url)}" target="_blank" rel="noopener">Meeting on Legistar</a>`);
-    if (r.video_url) links.push(`<a href="${esc(r.video_url)}" target="_blank" rel="noopener">Meeting video</a>`);
-    if (r.yes_count != null) links.push(`<button type="button" class="linkish" data-votes="${r.item_id}" style="font:inherit;font-weight:600;color:var(--link);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline">Roll-call votes</button>`);
-    const meta = [`<span><strong>${esc(fmtDate(r.date))}</strong> · ${esc(r.body)}</span>`];
-    if (r.sponsors) meta.push(`<span>Sponsor: ${esc(r.sponsors.replace(/; /g, ", "))}</span>`);
-    if (r.departments) meta.push(`<span>${esc(r.departments.replace(/; /g, ", "))}</span>`);
+    if (main.matter_url) links.push(`<a href="${esc(main.matter_url)}" target="_blank" rel="noopener">Legislation page</a>`);
+    if (main.minutes_url) links.push(`<a href="${esc(main.minutes_url)}" target="_blank" rel="noopener">Minutes PDF</a>`);
+    else if (main.agenda_url) links.push(`<a href="${esc(main.agenda_url)}" target="_blank" rel="noopener">Agenda PDF</a>`);
+    if (main.yes_count != null) links.push(`<button type="button" class="linkish" data-votes="${main.item_id}">Roll-call votes</button>`);
+    if (main.video_url) links.push(`<a href="${esc(main.video_url)}" target="_blank" rel="noopener">Meeting video</a>`);
+    links.push(`<button type="button" class="linkish" data-copy="${esc(permalink(main))}">Copy link</button>`);
+    links.push(`<button type="button" class="linkish" data-copy="${esc(citation(main))}">Copy citation</button>`);
+    const meta = [];
+    if (main.sponsors) meta.push(`<span>Sponsor: ${esc(main.sponsors.replace(/; /g, ", "))}</span>`);
+    if (main.departments) meta.push(`<span>${esc(main.departments.replace(/; /g, ", "))}</span>`);
+    let timeline = "";
+    if (steps.length > 1) {
+      const shown = steps.length > 5 ? steps.slice(-5) : steps;
+      timeline = `<details class="timeline"${steps.length <= 4 ? " open" : ""}><summary>History: ${steps.length} steps, ${esc(fmtDate(steps[0].date))} – ${esc(fmtDate(latest.date))}</summary><ol>`
+        + (steps.length > shown.length ? `<li class="more-steps">${steps.length - shown.length} earlier step${steps.length - shown.length === 1 ? "" : "s"} not shown</li>` : "")
+        + shown.map((r) => `<li><span class="when">${esc(fmtDate(r.date))}</span><span class="where">${esc(r.body)}</span>
+            <span class="what" tabindex="0" data-tip="${outcomeTipFor(r)}">${esc(r.outcome || "")}</span>
+            ${r.minutes_url ? `<a href="${esc(r.minutes_url)}" target="_blank" rel="noopener">minutes</a>` : (r.agenda_url ? `<a href="${esc(r.agenda_url)}" target="_blank" rel="noopener">agenda</a>` : "")}</li>`).join("")
+        + `</ol></details>`;
+    } else {
+      meta.unshift(`<span><strong>${esc(fmtDate(main.date))}</strong> · ${esc(main.body)}</span>`);
+    }
     return `<article class="card result">
       <div class="tags">
-        <span class="kind" tabindex="0" data-tip="${GLOSSARY[r.kind] ? r.kind : "other"}">${esc(KIND_LABEL[r.kind] || "Item")}</span>
-        ${r.matter_file ? `<span class="file mono" tabindex="0" data-tip="file_number" style="cursor:help">${esc(r.matter_file)}</span>` : ""}
-        ${r.outcome ? `<span class="outcome" tabindex="0" data-tip="${outcomeTip}">${icon}${esc(outcomeLabel)}</span>` : ""}
+        <span class="kind" tabindex="0" data-tip="${GLOSSARY[main.kind] ? main.kind : "other"}">${esc(KIND_LABEL[main.kind] || "Item")}</span>
+        ${main.matter_file ? `<span class="file mono" tabindex="0" data-tip="file_number" style="cursor:help">${esc(main.matter_file)}</span>` : ""}
+        ${head.outcome ? `<span class="outcome" tabindex="0" data-tip="${outcomeTipFor(head)}">${icon}${esc(head.outcome)}${steps.length > 1 ? ` · ${esc(fmtDate(head.date))}` : ""}</span>` : ""}
       </div>
-      <p>${highlight(r.snip, r.title)}</p>
-      ${dissent}
+      <p>${highlight(snip, main.title)}</p>
+      ${dissentBox(decisive)}
       <div class="meta">${meta.join("")}</div>
+      ${timeline}
       <div class="links">${links.join("")}</div>
-      <div class="votes" id="votes-${r.item_id}" hidden></div>
+      <div class="votes" id="votes-${main.item_id}" hidden></div>
     </article>`;
   }
 
@@ -385,6 +446,64 @@
     $("updated").textContent = `Last updated ${when} · ${stats.meetings_indexed.toLocaleString()} meetings and ${stats.items_indexed.toLocaleString()} items indexed.`;
   }
 
+  // ------------------------------------------------------------- copy, CSV, upcoming meetings
+  async function copyText(text, btn) {
+    try { await navigator.clipboard.writeText(text); }
+    catch (e) {
+      const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select();
+      document.execCommand("copy"); t.remove();
+    }
+    const old = btn.textContent; btn.textContent = "Copied!"; setTimeout(() => { btn.textContent = old; }, 1500);
+  }
+
+  const CSV_LIMIT = 5000;
+  async function downloadCsv() {
+    const btn = $("csv"); const old = btn.textContent; btn.textContent = "Preparing…";
+    try {
+      const d = await db();
+      const { from, allArgs, W } = searchParts();
+      const rows = await d.query(`SELECT i.date, i.body, i.kind, i.matter_file, i.title, i.outcome, i.sponsors, i.departments,
+            i.topics, m.minutes_url, m.agenda_url, i.matter_url
+          FROM ${from} JOIN items i ON i.item_id = f.item_id JOIN meetings m ON m.event_id = i.event_id
+          ${W} ORDER BY f.date DESC, f.seq LIMIT ${CSV_LIMIT}`, allArgs);
+      const cols = ["date", "body", "kind", "matter_file", "title", "outcome", "sponsors", "departments", "topics", "minutes_url", "agenda_url", "matter_url"];
+      const cell = (v) => { const t = v == null ? "" : String(v); return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+      const csv = [cols.join(","), ...rows.map((r) => cols.map((c) => cell(r[c])).join(","))].join("\n");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv" }));
+      a.download = `cincinnati-council-${(state.q || "items").replace(/[^a-z0-9]+/gi, "-").slice(0, 40)}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+      btn.textContent = rows.length >= CSV_LIMIT ? `Downloaded first ${CSV_LIMIT.toLocaleString()} rows` : "Downloaded";
+      setTimeout(() => { btn.textContent = old; }, 2500);
+    } catch (e) { console.error(e); btn.textContent = old; alert("Could not build the CSV: " + (e.message || e)); }
+  }
+
+  // "Coming up at City Hall": meetings in the next 14 days (or the most recent ones if none).
+  async function renderUpcoming() {
+    const d = await db();
+    const t = today();
+    let rows = await d.query(`SELECT m.event_id, m.date, m.time, m.body, m.agenda_url, m.location,
+        (SELECT COUNT(*) FROM facets f WHERE f.event_id = m.event_id) AS n
+      FROM meetings m WHERE m.date >= ? AND m.date <= ? ORDER BY m.date, m.time LIMIT 12`, [t, addDays(t, 14)]);
+    let recent = false;
+    if (!rows.length) {
+      recent = true;
+      rows = await d.query(`SELECT m.event_id, m.date, m.time, m.body, m.agenda_url, m.location,
+          (SELECT COUNT(*) FROM facets f WHERE f.event_id = m.event_id) AS n
+        FROM meetings m WHERE m.date < ? ORDER BY m.date DESC LIMIT 6`, [t]);
+    }
+    $("upcoming-h").textContent = recent ? "Recent meetings" : "Coming up at City Hall";
+    $("upcoming-list").innerHTML = rows.length ? rows.map((r) => {
+      const title = `${r.body}, ${fmtDate(r.date)}`;
+      const when = new Date(r.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+      return `<li><button type="button" class="meeting" data-meeting="${r.event_id}" data-title="${esc(title)}">
+          <span class="d">${esc(when)}${r.time ? " · " + esc(r.time) : ""}</span>
+          <span class="b">${esc(r.body)}</span>
+          <span class="n">${r.n ? `${r.n} agenda item${r.n === 1 ? "" : "s"}` : "Agenda not posted yet"}</span></button>
+        ${r.agenda_url ? `<a href="${esc(r.agenda_url)}" target="_blank" rel="noopener" class="pdf">Agenda PDF</a>` : ""}</li>`;
+    }).join("") : `<li class="empty">No meetings found.</li>`;
+  }
+
   // ------------------------------------------------------------- explainer tooltips
   // Any element with data-tip="key" shows GLOSSARY[key] on hover, keyboard focus, or tap.
   function bindTooltips() {
@@ -446,7 +565,7 @@
   }
 
   // ------------------------------------------------------------- state <-> URL
-  const KEYS = ["q", ...FILTERS, "sort"];
+  const KEYS = ["q", ...FILTERS, ...FOCUS, "sort"];
   // Make the dropdowns show the current filters; a custom date range gets its own option.
   function syncFilterControls(dateLabel) {
     const sel = $("f-date");
@@ -479,7 +598,7 @@
     KEYS.forEach((k) => { if (state[k] && !(k === "sort" && state[k] === "newest")) p.set(k, state[k]); });
     history.replaceState(null, "", p.toString() ? "?" + p : location.pathname);
   }
-  const anyFilter = () => FILTERS.some((k) => state[k]);
+  const anyFilter = () => [...FILTERS, ...FOCUS].some((k) => state[k]);
 
   function search() {
     state.q = $("q").value;
@@ -491,28 +610,41 @@
 
   // ------------------------------------------------------------- wire up
   function bind() {
-    $("search-form").addEventListener("submit", (e) => { e.preventDefault(); state.q = $("q").value; search(); });
+    $("search-form").addEventListener("submit", (e) => { e.preventDefault(); FOCUS.forEach((k) => { state[k] = ""; }); state.q = $("q").value; search(); });
     bindTooltips();
     document.querySelectorAll("[data-try]").forEach((b) => b.addEventListener("click", () => { $("q").value = b.dataset.try; state.q = b.dataset.try; search(); }));
     $("filters").addEventListener("change", (e) => {
       const k = e.target.id.replace("f-", "");
       state[k] = e.target.value;
+      FOCUS.forEach((f) => { state[f] = ""; });
       search();
     });
     $("filters").addEventListener("reset", () => {
-      FILTERS.forEach((k) => { state[k] = ""; });
+      [...FILTERS, ...FOCUS].forEach((k) => { state[k] = ""; });
       setTimeout(search, 0);
     });
     document.querySelectorAll("#sorter button").forEach((b) => b.addEventListener("click", () => { state.sort = b.dataset.sort; search(); }));
     $("more").addEventListener("click", () => { state.offset += PAGE; runSearch(true); });
+    $("csv").addEventListener("click", downloadCsv);
     document.querySelectorAll(".toggle button").forEach((b) => b.addEventListener("click", () => { state.period = b.dataset.period; renderPeriod(); }));
     document.addEventListener("click", (e) => {
       const v = e.target.closest("[data-votes]");
       if (v) showVotes(v.dataset.votes, v);
+      const cp = e.target.closest("[data-copy]");
+      if (cp) { copyText(cp.dataset.copy, cp); return; }
+      const mt = e.target.closest("[data-meeting]");
+      if (mt) {
+        [...FILTERS, ...FOCUS].forEach((k) => { state[k] = ""; });
+        state.meeting = mt.dataset.meeting; $("q").value = ""; state.q = "";
+        $("res-h").dataset.meetingTitle = mt.dataset.title;
+        syncFilterControls(); search();
+        document.getElementById("res-h").scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
       const g = e.target.closest("[data-go]");
       if (g && !e.target.closest("button.tip")) {
         const go = JSON.parse(g.dataset.go);
-        FILTERS.forEach((k) => { state[k] = ""; });
+        [...FILTERS, ...FOCUS].forEach((k) => { state[k] = ""; });
         ["kind", "body", "sponsor", "dept", "topic", "outcome", "vote"].forEach((k) => { if (go[k]) state[k] = go[k]; });
         if (go.from) state.date = `${go.from}..${go.to}`;
         $("q").value = ""; state.q = "";
@@ -526,7 +658,7 @@
         const sel = $("f-vote");
         const val = vb.dataset.vote;
         if (![...sel.options].some((o) => o.value === val)) { const o = document.createElement("option"); o.value = val; o.textContent = "No or abstain: " + val; sel.appendChild(o); }
-        FILTERS.forEach((k) => { state[k] = ""; const el = $("f-" + k); if (el) el.value = ""; });
+        [...FILTERS, ...FOCUS].forEach((k) => { state[k] = ""; const el = $("f-" + k); if (el) el.value = ""; });
         state.vote = val; sel.value = val;
         if (vb.dataset.date) { state.date = vb.dataset.date; $("f-date").value = vb.dataset.date; }
         $("q").value = ""; state.q = "";
@@ -563,6 +695,7 @@
     try {
       await db();
       search();
+      renderUpcoming().catch((e) => console.error(e));
     } catch (e) {
       console.error(e);
       $("res-h").textContent = "The database could not be loaded";

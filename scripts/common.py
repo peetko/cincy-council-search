@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS items (
 CREATE INDEX IF NOT EXISTS items_event ON items(event_id);
 CREATE INDEX IF NOT EXISTS items_date ON items(date);
 CREATE INDEX IF NOT EXISTS items_first_seen ON items(first_seen);
+CREATE INDEX IF NOT EXISTS items_matter ON items(matter_id);
 
 CREATE TABLE IF NOT EXISTS votes (
   item_id   INTEGER,
@@ -138,6 +139,8 @@ DROP TABLE IF EXISTS facets;
 CREATE TABLE facets (
   item_id     INTEGER PRIMARY KEY,
   event_id    INTEGER,
+  matter_id   INTEGER,
+  matter_file TEXT,
   date        TEXT,
   body        TEXT,
   is_council  INTEGER,
@@ -151,14 +154,16 @@ CREATE TABLE facets (
   dissent     TEXT     -- final-passage votes only: "Name|no; Name|abstain"
 );
 CREATE INDEX facets_date ON facets(date, is_council, seq);
+CREATE INDEX facets_event ON facets(event_id);
+CREATE INDEX facets_file ON facets(matter_file);
 """
 
 
 def rebuild_search_index(con):
     con.executescript(FACETS_SCHEMA)
-    con.execute("""INSERT INTO facets(item_id, event_id, date, body, is_council, kind, outcome_cat, seq,
+    con.execute("""INSERT INTO facets(item_id, event_id, matter_id, matter_file, date, body, is_council, kind, outcome_cat, seq,
                                       sponsors, departments, mover, topics, dissent)
-                   SELECT i.item_id, i.event_id, i.date, i.body, i.is_council, i.kind, i.outcome_cat, i.seq,
+                   SELECT i.item_id, i.event_id, i.matter_id, NULLIF(i.matter_file, ''), i.date, i.body, i.is_council, i.kind, i.outcome_cat, i.seq,
                           i.sponsors, i.departments, i.mover, i.topics,
                           CASE WHEN i.is_final = 1 THEN COALESCE((
                             SELECT group_concat(v.person || '|' || v.value, '; ') FROM votes v
