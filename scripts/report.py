@@ -46,6 +46,19 @@ def main():
     for r in q("SELECT kind, matter_type, COUNT(*) FROM items GROUP BY kind, matter_type ORDER BY 3 DESC LIMIT 15"):
         print(f"  {r[2]:6}  {r[0]:<14} {r[1]}")
 
+    print("\n== Final-passage votes by action (full Council) ==")
+    for r in q("""SELECT action, COUNT(*), SUM(passed = 1) FROM items WHERE is_final = 1
+                  GROUP BY action ORDER BY 2 DESC"""):
+        print(f"  {r[1]:6}  {r[0]}  ({r[2]} passed)")
+
+    print("\n== Samples of items with no type (kind = other, blank matter type) ==")
+    for r in q("""SELECT action, substr(title, 1, 110), COUNT(*) OVER () FROM items
+                  WHERE kind = 'other' AND matter_type = '' ORDER BY random() LIMIT 12"""):
+        print(f"  [{r[0] or '-'}] {r[1]}")
+    for r in q("""SELECT substr(title, 1, 25) AS start, COUNT(*) FROM items
+                  WHERE kind = 'other' AND matter_type = '' GROUP BY start ORDER BY 2 DESC LIMIT 12"""):
+        print(f"  {r[1]:6}  starts with: {r[0]!r}")
+
     print("\n== Tag coverage ==")
     n = q("SELECT COUNT(*) FROM items")[0][0] or 1
     for col in ("topics", "departments", "sponsors"):

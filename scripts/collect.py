@@ -85,8 +85,7 @@ def save_items(con, ev, body, date, today, seen_at, stats):
         keep.append(item_id)
         action = clean(it.get("EventItemActionName"))
         outcome, cat = outcome_for(it, date, today)
-        is_final = 1 if (is_council and it.get("EventItemPassedFlag") is not None
-                         and FINAL_RX.search(action) and not NOT_FINAL_RX.search(action)) else 0
+        is_final = is_final_vote(is_council, it.get("EventItemPassedFlag"), action)
         text = " ".join([title, clean(it.get("EventItemMatterName")), clean(it.get("EventItemAgendaNote")),
                          clean(it.get("EventItemMinutesNote")), clean(it.get("EventItemActionText"))])
         matter_id = it.get("EventItemMatterId")
@@ -164,15 +163,22 @@ def save_votes(con, item_id):
                     "AND outcome_cat IN ('passed','failed')", (f"{yes}–{no}", item_id))
 
 
+def is_final_vote(is_council, passed, action):
+    return 1 if (is_council and passed is not None and FINAL_RX.search(action or "")
+                 and not NOT_FINAL_RX.search(action or "")) else 0
+
+
 def retag(con):
+    """Re-apply everything that depends on config/ files, so edits take effect on old items too."""
     rows = con.execute("SELECT item_id, title, matter_name, agenda_note, minutes_note, action_text, "
-                       "matter_type FROM items").fetchall()
+                       "matter_type, is_council, passed, action FROM items").fetchall()
     for r in rows:
         text = " ".join(x or "" for x in (r["title"], r["matter_name"], r["agenda_note"],
                                          r["minutes_note"], r["action_text"]))
-        con.execute("UPDATE items SET topics=?, departments=?, sponsors=?, kind=? WHERE item_id=?",
+        con.execute("UPDATE items SET topics=?, departments=?, sponsors=?, kind=?, is_final=? WHERE item_id=?",
                     ("; ".join(tag(text, TOPIC_RX)), "; ".join(tag(text, DEPT_RX)),
-                     parse_sponsors(r["title"]), classify_kind(r["matter_type"], r["title"]), r["item_id"]))
+                     parse_sponsors(r["title"]), classify_kind(r["matter_type"], r["title"]),
+                     is_final_vote(r["is_council"], r["passed"], r["action"]), r["item_id"]))
     print(f"Re-tagged {len(rows)} items.")
 
 
