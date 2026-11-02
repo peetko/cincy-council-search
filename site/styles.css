@@ -376,3 +376,9 @@ th[aria-sort="ascending"] .sort-btn, th[aria-sort="descending"] .sort-btn { colo
 th[aria-sort="ascending"] .sort-btn::after { content: "▲"; color: var(--red); }
 th[aria-sort="descending"] .sort-btn::after { content: "▼"; color: var(--red); }
 th.num .sort-btn { justify-content: flex-end; text-align: right; }
+.cell-bar { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; width: 100%; }
+.cell-bar .cb { flex: 0 1 64px; height: 6px; background: #eef1f6; border-radius: 3px; overflow: hidden; display: flex; justify-content: flex-end; }
+.cell-bar .cb span { display: block; height: 100%; background: #86b6ef; border-radius: 3px; }
+.cell-bar .cv { min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; }
+.committee-table td.num { min-width: 110px; }
+.committee-table tbody th { min-width: 220px; }

@@ -1088,13 +1088,19 @@
     document.querySelectorAll(".col-length").forEach((el) => { el.hidden = !showLen; });
     const active = c.committees.filter((r) => r.active && r.meetings_12m > 0).sort((a, b) => b.items_12m - a.items_12m);
     const to = today();
+    // A thin bar beside each number, scaled to the column's largest value, for at-a-glance comparison.
+    const colMax = (f) => Math.max(1, ...active.map(f).filter((v) => v != null));
+    const mx = { meetings: colMax((r) => r.meetings_12m), items: colMax((r) => r.items_12m),
+                 stay: colMax((r) => r.stay && r.stay.median), length: colMax((r) => r.length && r.length.median) };
+    const withBar = (v, max, text) => v == null ? "<span class='muted'>–</span>"
+      : `<span class="cell-bar"><span class="cb"><span style="width:${Math.max(2, (v / max) * 100)}%"></span></span><span class="cv">${text}</span></span>`;
     $("committee-rows").innerHTML = active.map((r) => {
       const pct = r.matters_12m ? Math.round((r.to_council_12m / r.matters_12m) * 100) : null;
       return `<tr><th scope="row"><button type="button" class="linkish" ${goAttr({ body: r.body, from: c.since, to, label: "Last 12 months" })}>${esc(r.body)}</button></th>
-        <td class="num">${r.meetings_12m}</td><td class="num">${r.items_12m.toLocaleString()}</td>
+        <td class="num">${withBar(r.meetings_12m, mx.meetings, r.meetings_12m)}</td><td class="num">${withBar(r.items_12m, mx.items, r.items_12m.toLocaleString())}</td>
         <td>${pct == null ? "<span class='muted'>–</span>" : `<span class="pct" title="${r.to_council_12m} of ${r.matters_12m} pieces of legislation first heard here in the last 12 months"><span class="pbar"><span style="width:${pct}%"></span></span>${pct}%</span>`}</td>
-        <td class="num">${r.stay ? Math.round(r.stay.median) : "–"}</td>
-        ${showLen ? `<td class="num">${r.length ? `${Math.round(r.length.median)} min` : "–"}</td>` : ""}</tr>`;
+        <td class="num">${withBar(r.stay ? r.stay.median : null, mx.stay, r.stay ? Math.round(r.stay.median) : "")}</td>
+        ${showLen ? `<td class="num">${withBar(r.length ? r.length.median : null, mx.length, r.length ? `${Math.round(r.length.median)} min` : "")}</td>` : ""}</tr>`;
     }).join("") || `<tr><td colspan="6" class="empty">No committee meetings in the last 12 months.</td></tr>`;
     const past = c.committees.filter((r) => !active.includes(r));
     $("past-committees").hidden = !past.length;
