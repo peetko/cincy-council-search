@@ -136,7 +136,7 @@ figcaption .s { font-size: 13px; color: var(--ink-2); }
 .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; color: var(--ink-2); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
-.cap-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 10px; }
+.cap-row { display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 10px; }
 
 .bars-chart { display: flex; gap: 8px; }
 .bars-chart .y { display: flex; flex-direction: column; justify-content: space-between; height: 200px; font-size: 12px; color: var(--ink-3); text-align: right; font-variant-numeric: tabular-nums; transform: translateY(-0.5em); }
@@ -174,6 +174,8 @@ tbody tr { border-top: 1px solid var(--grid); }
 tbody th { text-align: left; font-weight: 600; }
 .num { text-align: right; font-variant-numeric: tabular-nums; }
 .stack { display: flex; gap: 2px; height: 14px; }
+.stack div { min-width: 3px; }
+.stack div:only-child { border-radius: 4px; }
 .stack div:first-child { border-radius: 4px 0 0 4px; }
 .stack div:last-child { border-radius: 0 4px 4px 0; }
 
@@ -183,7 +185,7 @@ footer.site { border-top: 1px solid var(--line); padding-top: 20px; display: fle
 /* ---------- explainer tooltips ---------- */
 .lab { display: inline-flex; align-items: center; gap: 2px; }
 .lab.end { justify-content: flex-end; }
-button.tip { flex: 0 0 auto; width: 28px; height: 28px; margin: -6px -4px -6px 0; padding: 0; border: 0; background: none; cursor: help; display: inline-flex; align-items: center; justify-content: center; color: var(--ink-3); font: 700 11px/1 "Public Sans", sans-serif; text-transform: none; letter-spacing: 0; }
+button.tip { flex: 0 0 auto; width: 28px; height: 28px; margin: -6px 0; padding: 0; border: 0; background: none; cursor: help; display: inline-flex; align-items: center; justify-content: center; color: var(--ink-3); font: 700 11px/1 "Public Sans", sans-serif; text-transform: none; letter-spacing: 0; }
 button.tip::before { content: "i"; display: inline-flex; width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid currentColor; align-items: center; justify-content: center; font-style: normal; }
 button.tip { font-size: 0; }
 button.tip::before { font-size: 11px; }

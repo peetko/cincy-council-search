@@ -336,10 +336,10 @@
       return `<tr>
         <th scope="row"><button type="button" data-sponsor="${esc(m.name)}" style="font:inherit;font-weight:600;color:var(--ink);background:none;border:0;padding:0;cursor:pointer;text-align:left">${esc(m.name)}</button></th>
         <td class="num">${m.present}%</td>
-        <td><div class="stack" title="${esc(m.name)}: ${m.yes} yes, ${m.no} no, ${out} absent or abstained">
-          <div style="width:${(m.yes / tot) * 100}%;background:var(--series-cur)"></div>
-          <div style="width:${(m.no / tot) * 100}%;background:var(--series-no)"></div>
-          <div style="width:${(out / tot) * 100}%;background:var(--absent)"></div></div></td>
+        <td><div class="stack" title="${esc(m.name)}: ${m.yes} yes, ${m.no} no, ${out} absent or abstained">${
+          [[m.yes, "var(--yes)"], [m.no, "var(--no)"], [out, "var(--absent)"]]
+            .filter(([n]) => n > 0)  // skip empty segments so gaps don't add up
+            .map(([n, c]) => `<div style="flex:${n} 1 0;background:${c}"></div>`).join("")}</div></td>
         <td class="num"><button type="button" class="count-btn" data-vote="${esc(m.name)}" data-date="${{ month: "mtd", quarter: "qtd", year: "ytd" }[state.period]}" ${dissent ? "" : "disabled"} aria-label="${dissent} no or abstain votes by ${esc(m.name)}: show them">${dissent}</button></td>
         <td class="num">${m.against}</td></tr>`;
     }).join("") : `<tr><td colspan="5" class="empty">No final votes recorded in this period yet.</td></tr>`;
