@@ -335,7 +335,8 @@ def main():
     ok = docs.execute("SELECT COUNT(*) FROM docs WHERE status = 'ok'").fetchone()[0]
     checked = docs.execute("SELECT COUNT(*) FROM docs").fetchone()[0]
     with open(os.path.join(os.path.dirname(docs_path), "docs-stats.json"), "w") as f:
-        json.dump({"with_text": ok, "checked": checked, "total": total, "updated": today}, f)
+        json.dump({"with_text": ok, "checked": checked, "total": total, "updated": today,
+                   "summaries_public": bool(SETTINGS.get("summaries_public"))}, f)
 
     # Rebuild the full-text index and compact the file for the website.
     docs.executescript("DROP TABLE IF EXISTS docs_fts;" + FTS)
