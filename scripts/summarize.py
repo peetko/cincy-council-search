@@ -93,6 +93,10 @@ class QuotaUsedUp(Exception):
     pass
 
 
+class Overloaded(Exception):
+    pass
+
+
 requests_made = 0
 
 
@@ -117,13 +121,15 @@ def call(model, system, user, schema):
             msg = e.read().decode("utf-8", "ignore")[:300]
             if e.code == 429:
                 if "per day" in msg.lower() or "PerDay" in msg or attempt == 3:
-                    raise QuotaUsedUp(msg)
+                    raise QuotaUsedUp(re.sub(r"\s+", " ", msg))
                 time.sleep(delay)  # per-minute limit: wait and retry
                 delay *= 2
                 continue
-            if e.code in (500, 502, 503, 504) and attempt < 3:
-                time.sleep(delay)
-                continue
+            if e.code in (500, 502, 503, 504):
+                if attempt < 2:
+                    time.sleep(delay)
+                    continue
+                raise Overloaded(f"{model}: {e.code}")
             raise RuntimeError(f"Gemini error {e.code}: {msg}")
         except (KeyError, IndexError, json.JSONDecodeError) as e:
             if attempt < 3:
@@ -132,15 +138,14 @@ def call(model, system, user, schema):
             raise RuntimeError(f"Unreadable Gemini answer: {e}")
 
 
-def pick_model():
+def pick_models():
+    """Usable Flash models, preferred first (the next one is used if one is overloaded)."""
     req = urllib.request.Request(f"{API}/models?pageSize=200", headers={"x-goog-api-key": KEY})
     names = [m["name"].split("/")[-1] for m in json.loads(urllib.request.urlopen(req, timeout=60).read()).get("models", [])
              if "generateContent" in m.get("supportedGenerationMethods", [])]
-    for p in PREFERRED:
-        if p in names:
-            return p, names
-    flash = [n for n in names if "flash" in n and not re.search(r"lite|image|tts|audio|live|exp|preview|thinking", n)]
-    return (sorted(flash)[-1] if flash else None), names
+    flash = [n for n in names if "flash" in n and not re.search(r"image|tts|audio|live|exp|preview|thinking|embed", n)]
+    ordered = [p for p in PREFERRED if p in names] + sorted((n for n in flash if n not in PREFERRED and "lite" not in n), reverse=True)
+    return ordered, names
 
 
 # ---------------------------------------------------------------- checks without AI
@@ -253,11 +258,13 @@ def main():
     kinds = {r[0]: (r[1], r[2], r[3]) for r in main_db.execute(
         "SELECT matter_id, MAX(kind), MAX(title), MAX(date) FROM items WHERE matter_id IS NOT NULL GROUP BY matter_id")}
 
-    model, available = pick_model()
-    if not model:
-        print("No suitable Gemini model found. Available: " + ", ".join(available[:30]))
+    models, available = pick_models()
+    print("Models this key can use: " + ", ".join(available))
+    if not models:
+        print("No suitable Gemini model found.")
         return
-    print(f"Using {model}.")
+    model = models[0]
+    print(f"Using {model} (fallbacks: {', '.join(models[1:4]) or 'none'}).")
 
     done = {r[0]: (r[1], r[2]) for r in docs.execute("SELECT matter_id, text_hash, status FROM summaries")}
     only = {f.strip() for f in args.files.split(",") if f.strip()}
@@ -284,9 +291,19 @@ def main():
             print(f"Stopping at the per-run limit of {args.max_requests} requests.")
             break
         try:
-            status, summary, attempts, problems = summarize_one(model, file, title or "", text)
-        except QuotaUsedUp:
-            print("Gemini's free daily limit is used up; the next run will continue.")
+            try:
+                status, summary, attempts, problems = summarize_one(model, file, title or "", text)
+            except Overloaded:
+                if len(models) > 1:
+                    models.pop(0)
+                    model = models[0]
+                    print(f"That model is overloaded; switching to {model}.")
+                status, summary, attempts, problems = summarize_one(model, file, title or "", text)
+        except QuotaUsedUp as e:
+            print(f"Gemini says a limit was reached; stopping here (the next run continues). Detail: {str(e)[:400]}")
+            break
+        except Overloaded:
+            print("Gemini is overloaded right now; stopping here (the next run continues).")
             break
         except Exception as e:
             status, summary, attempts, problems = "error", "", 0, [str(e)[:300]]
