@@ -32,6 +32,7 @@ import sqlite3
 import subprocess
 import tempfile
 import time
+import urllib.error
 import urllib.request
 import zipfile
 
@@ -151,9 +152,16 @@ def pick_attachment(atts):
 
 
 def download(url):
+    """The file's bytes, or None if it's missing (404/410) or too big."""
     req = urllib.request.Request(url, headers={"User-Agent": "plum-street-ledger (github.com)"})
-    with urllib.request.urlopen(req, timeout=90) as resp:
-        data = resp.read(MAX_BYTES + 1)
+    try:
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            data = resp.read(MAX_BYTES + 1)
+    except urllib.error.HTTPError as e:
+        if e.code in (403, 404, 410):  # the file is gone or not public: nothing to fetch
+            STATS["attachment files missing on Legistar"] = STATS.get("attachment files missing on Legistar", 0) + 1
+            return None
+        raise
     time.sleep(legistar.PAUSE)
     return None if len(data) > MAX_BYTES else data
 
@@ -297,7 +305,7 @@ def main():
         except Exception as e:  # one bad file shouldn't stop the run
             status, source, name, url, text = "error", None, None, None, None
             print(f"  {r['matter_file']}: {e}")
-            errors_in_a_row += 1
+            errors_in_a_row += 1 if isinstance(e, RuntimeError) else 0  # only API failures suggest an outage
             if errors_in_a_row >= 5:
                 print("Five errors in a row - Legistar may be down. Stopping; the next run will pick up here.")
                 break
