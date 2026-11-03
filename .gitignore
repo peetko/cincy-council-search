@@ -16,3 +16,4 @@ __pycache__/
 site/data/docs/
 site/data/docs-info.json
 site/data/docs-stats.json
+site/data/*.prev

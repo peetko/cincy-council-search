@@ -51,6 +51,7 @@ jobs:
           mkdir -p site/data
           if curl -fsSL -o site/data/council.db "${{ steps.pages.outputs.base_url }}/data/council.db"; then
             echo "Starting from the published database ($(du -h site/data/council.db | cut -f1))."
+            cp site/data/council.db site/data/council.db.prev   # published alongside the new one
           else
             echo "No published database yet - doing the full first-time download."
             rm -f site/data/council.db
@@ -70,6 +71,7 @@ jobs:
               curl -fsSL --retry 3 "$base/${prefix}$(printf %03d "$i")" >> site/data/docs.db
             done
             echo "Starting from the published full-text database ($(du -h site/data/docs.db | cut -f1))."
+            cp site/data/docs.db site/data/docs.db.prev
           else
             echo "No full-text database yet - starting one."
           fi
@@ -111,9 +113,9 @@ jobs:
 
       - name: Split the database into pieces for the website
         run: |
-          python scripts/split_db.py
-          python scripts/split_db.py --db site/data/docs.db --out docs --info docs-info.json
-          rm -f site/data/docs.db   # published only in pieces
+          python scripts/split_db.py --also site/data/council.db.prev
+          python scripts/split_db.py --db site/data/docs.db --out docs --info docs-info.json --also site/data/docs.db.prev
+          rm -f site/data/docs.db site/data/*.prev   # docs.db is published only in pieces
 
       - uses: actions/upload-pages-artifact@v3
         with:

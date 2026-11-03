@@ -47,7 +47,7 @@ OCR_MAX_PAGES = int(SETTINGS.get("ocr_max_pages", 15))
 OCR_AVAILABLE = bool(shutil.which("tesseract") and shutil.which("pdftoppm"))
 
 # Which attachment is "the legislation": its name says so, and it isn't supporting material.
-LEGIS_RX = re.compile(r"ordinance|resolution|motion|legislation|\bord\b|\bres\b|emergency|amended|substitute|version", re.I)
+LEGIS_RX = re.compile(r"ordinance|ordnance|resolution|motion|legislation|\bord\b|\bres\b|emergency|amended|substitute|version", re.I)
 SKIP_RX = re.compile(r"exhibit|attachment|certified copy|original\b|\bmap|survey|plat\b|agreement|contract|lease|budget|spreadsheet|"
                      r"presentation|powerpoint|slides|comment|petition|letter|e-?mail|correspondence|photo|rendering|"
                      r"site plan|application|invoice|report|memo|transmittal|minutes|resume|bio\b", re.I)
