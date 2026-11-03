@@ -13,8 +13,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          curl -sS https://models.github.ai/catalog/models -H "Authorization: Bearer $GH_TOKEN" > catalog.json
-          python3 - <<'PY'
+          curl -sS -D cat_headers.txt https://models.github.ai/catalog/models -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GH_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" > catalog.json || true
+          head -5 cat_headers.txt; head -c 300 catalog.json; echo
+          python3 - <<'PY' || true
           import json
           cat = json.load(open("catalog.json"))
           print(len(cat), "models")
