@@ -462,7 +462,7 @@
         const card = document.querySelector(`#result-list article.result[data-mid="${Number(r.matter_id)}"]`);
         if (!card || card.querySelector(".ai-sum")) return;
         card.querySelector(".tags").insertAdjacentHTML("afterend",
-          `<div class="ai-sum"><span class="ai-tag" tabindex="0" data-tip="ai_summary">AI summary</span><p>${esc(r.summary)}</p></div>`);
+          `<div class="ai-sum"><span class="ai-tag" tabindex="0" data-tip="ai_summary"><svg class="ai-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 2.5l1.9 5.6 5.6 1.9-5.6 1.9L10 17.5l-1.9-5.6L2.5 10l5.6-1.9z"/><path d="M18.5 13.5l.95 2.55 2.55.95-2.55.95-.95 2.55-.95-2.55-2.55-.95 2.55-.95z"/></svg>AI summary</span><p>${esc(r.summary)}</p></div>`);
       });
     }
     const rows = await docsQuery(`SELECT matter_id FROM docs WHERE status = 'ok' AND matter_id IN (${mids.join(",")})`, []);
