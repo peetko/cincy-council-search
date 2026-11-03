@@ -43,7 +43,7 @@ CHECKERS = SETTINGS.get("summary_checker_models", ["gemini-3.1-flash-lite", "gem
 KINDS = SETTINGS.get("summary_kinds", ["ordinance", "resolution"])
 PAUSE = float(SETTINGS.get("summary_pause_seconds", 7))  # stays under the free per-minute limit
 MAX_INPUT = int(SETTINGS.get("summary_max_input_chars", 30000))
-PROMPT_VERSION = "1"
+PROMPT_VERSION = "2"  # bump when the instructions change: flagged summaries are then tried again
 
 WRITE_INSTRUCTIONS = """You summarize Cincinnati City Council legislation for residents.
 
@@ -55,7 +55,9 @@ Accuracy rules - these matter more than style:
 - Copy numbers, dollar amounts, names and addresses exactly as written in the text.
 - If the text is unclear or garbled (it may come from a scanned page), leave that detail out.
 - Only the City Manager or City officials are "authorized"; describe outside parties accurately.
-- No opinions, no legal advice, no preamble. Don't start with "This ordinance" or "This resolution".
+- Keep it under about 70 words. Leave out account numbers, fund codes and section numbers.
+- Don't say who submitted or sponsored it unless the text clearly states that.
+- No opinions, no legal advice, no preamble.
 
 Also list every specific fact your summary uses (each amount, name, place, and action), each with an
 exact quote of 3 to 25 words copied word for word from the text that supports it."""
@@ -185,14 +187,35 @@ def quote_found(quote, ntext):
     return difflib.SequenceMatcher(None, window, q).ratio() >= 0.9
 
 
+def claim_traceable(claim, ntext, digits_text, word_nums):
+    nums = [n.replace(",", "").replace("$", "").rstrip(".") for n in re.findall(r"\$?\d[\d,]*(?:\.\d+)?", claim)]
+    names = [w for w in re.findall(r"\b[A-Z][\w&'’-]{2,}", claim) if w not in COMMON_CAPS]
+    if not nums and not names:
+        return False
+    return all(n in digits_text or (n.isdigit() and int(n) in word_nums) for n in nums if n) and \
+        all(norm(re.sub(r"['’]s$", "", w)) in ntext for w in names)
+
+
+ABBREV = re.compile(r"\b(U\.S|U\.S\.A|No|Nos|Inc|Co|Corp|Ltd|St|Ave|Mr|Ms|Dr|Jr|Sr|vs|approx|LLC|N\.A)\.", re.I)
+
+
+def tidy(summary):
+    """Remove a chatty preamble like 'Here is a summary:'."""
+    return re.sub(r"^\s*(here is|here's)[^:]*:\s*", "", summary, flags=re.I).strip()
+
+
 def local_checks(summary, facts, text):
     problems = []
     ntext = norm(text)
     digits_text = re.sub(r"[,\s]", "", text)
     word_nums = numbers_in_words(text)
     for f in facts:
-        if not quote_found(f.get("quote", ""), ntext):
-            problems.append(f"The supporting quote for “{f.get('claim', '')}” isn't in the text.")
+        if quote_found(f.get("quote", ""), ntext):
+            continue
+        # The quote was paraphrased: still fine if every number and name in the claim is in the text.
+        claim = f.get("claim", "")
+        if not claim_traceable(claim, ntext, digits_text, word_nums):
+            problems.append(f"The supporting quote for “{claim}” isn't in the text.")
     for num in re.findall(r"\$?\d[\d,]*(?:\.\d+)?", summary):
         plain = num.replace(",", "").replace("$", "").rstrip(".")
         if not plain:
@@ -211,11 +234,9 @@ def local_checks(summary, facts, text):
             w = re.sub(r"['’]s$", "", w)
             if w not in COMMON_CAPS and norm(w) not in ntext:
                 problems.append(f"The name “{w}” doesn't appear in the text.")
-    if re.match(r"\s*(here is|here's|this (ordinance|resolution|legislation))", summary, re.I):
-        problems.append("Don't start with a preamble or 'This ordinance'.")
-    sentences = [s for s in re.split(r"(?<=[.!?])\s+", summary.strip()) if s]
-    if len(sentences) > 4:
-        problems.append("Keep it to 2-3 sentences.")
+    sentences = [s for s in re.split(r"(?<=[.!?])\s+(?=[A-Z])", ABBREV.sub(lambda m: m.group(0).replace(".", "·"), summary.strip())) if s]
+    if len(sentences) > 4 or len(summary.split()) > 110:
+        problems.append("Keep it to 2-3 sentences, under about 70 words.")
     return problems
 
 
@@ -228,7 +249,7 @@ def summarize_one(model, checker, file, title, text):
     for attempt in (1, 2):
         ask = prompt + (f"\n\nYour previous summary had these problems; fix them and rely only on the text:\n{feedback}" if feedback else "")
         out = call(model, WRITE_INSTRUCTIONS, ask, WRITE_SCHEMA)
-        summary = (out.get("summary") or "").strip()
+        summary = tidy(out.get("summary") or "")
         problems = local_checks(summary, out.get("facts") or [], source)
         if not problems:  # only spend a verification request on a summary that passed the free checks
             v = call(checker, VERIFY_INSTRUCTIONS, f"Legislation text:\n{source}\n\nSummary to check:\n{summary}", VERIFY_SCHEMA)
@@ -267,7 +288,7 @@ def main():
     checker = next((m for m in checkers if m != model), checkers[0])
     print(f"Writing with {model}; checking with {checker}.")
 
-    done = {r[0]: (r[1], r[2]) for r in docs.execute("SELECT matter_id, text_hash, status FROM summaries")}
+    done = {r[0]: (r[1], r[2], r[3]) for r in docs.execute("SELECT matter_id, text_hash, status, prompt_version FROM summaries")}
     only = {f.strip() for f in args.files.split(",") if f.strip()}
     queue = []
     for mid, file, text in docs.execute("SELECT matter_id, matter_file, text FROM docs WHERE status = 'ok' AND text IS NOT NULL"):
@@ -279,7 +300,8 @@ def main():
             continue
         h = hashlib.sha1(text.encode()).hexdigest()[:12]
         prev = done.get(mid)
-        if prev and prev[0] == h and not (args.redo and only) and prev[1] != "error":
+        if prev and prev[0] == h and not (args.redo and only) and prev[1] != "error" \
+                and not (prev[1] == "flagged" and prev[2] != PROMPT_VERSION):
             continue
         queue.append((last or "", mid, file, title, text, h))
     queue.sort(reverse=True)  # newest first

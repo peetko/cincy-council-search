@@ -21,4 +21,4 @@ jobs:
       - name: Summarize the 10 test ordinances
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python scripts/summarize.py --files 202600714,202501779,202602490,202601521,202501902,202600032,202501853,202602339,202600970,202600971 --max-requests 60
+        run: python scripts/summarize.py --files 202600714,202501779,202602490,202601521,202501902,202600032,202501853,202602339,202600970,202600971 --max-requests 60 --redo
