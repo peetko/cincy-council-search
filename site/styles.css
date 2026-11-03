@@ -469,3 +469,27 @@ body.inner .docs-toggle { display: none; }
 .wn-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .wn-outcome { font-size: 13px; font-weight: 700; }
 .wn-outcome.failed { color: #9f0b24; }
+
+/* ---------- first-visit tour ---------- */
+.tour { position: fixed; inset: 0; z-index: 200; }
+.tour-shade { position: fixed; inset: 0; background: rgba(5, 15, 40, 0.55); }
+.tour-spot { position: fixed; border-radius: 12px; box-shadow: 0 0 0 9999px rgba(5, 15, 40, 0.55), 0 0 0 3px #fff, 0 0 0 6px var(--red); pointer-events: none; transition: all 0.25s ease; }
+.tour-spot:not([hidden]) ~ .tour-card { }
+.tour:has(.tour-spot:not([hidden])) .tour-shade { background: transparent; }
+.tour-card { position: fixed; width: min(360px, calc(100vw - 16px)); background: #fff; color: var(--ink); border-radius: 14px; padding: 16px 18px; box-shadow: 0 16px 40px rgba(5, 15, 40, 0.35); border-top: 4px solid var(--red); display: flex; flex-direction: column; gap: 8px; transition: top 0.25s ease, left 0.25s ease; }
+.tour-card.center { left: 50% !important; top: 50% !important; transform: translate(-50%, -50%); width: min(420px, calc(100vw - 16px)); }
+.tour-top { display: flex; justify-content: space-between; align-items: center; }
+.tour-count { font-size: 12px; font-weight: 700; color: var(--ink-3); letter-spacing: 0.04em; text-transform: uppercase; }
+.tour-x { border: 0; background: none; font-size: 24px; line-height: 1; color: var(--ink-3); cursor: pointer; padding: 0 4px; min-width: 32px; min-height: 32px; }
+.tour-x:hover { color: var(--red); }
+.tour-card h2 { margin: 0; font-size: 19px; }
+.tour-text { margin: 0; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
+.tour-nav { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.tour-dots { display: flex; gap: 5px; margin-right: auto; }
+.tour-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--badge); }
+.tour-dots i.on { background: var(--navy); }
+.tour-back, .tour-next { font: inherit; font-size: 15px; font-weight: 700; border-radius: 9px; padding: 9px 16px; cursor: pointer; min-height: 40px; }
+.tour-back { background: none; border: 1px solid #c9d0d9; color: var(--navy); }
+.tour-next { background: var(--red); border: 0; color: #fff; }
+.tour-next:hover { background: var(--red-hover); }
+@media (prefers-reduced-motion: reduce) { .tour-spot, .tour-card { transition: none; } }
