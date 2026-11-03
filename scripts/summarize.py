@@ -308,17 +308,21 @@ def main():
     print(f"{len(queue)} pieces of legislation to summarize" + (f" (limited to {len(only)} files)" if only else "") + ".")
 
     today = dt.date.today().isoformat()
-    counts = {}
+    counts, overloads = {}, 0
     for _, mid, file, title, text, h in queue:
         if requests_made + 4 > args.max_requests:
             print(f"Stopping at the per-run limit of {args.max_requests} requests.")
             break
         try:
-            try:
-                status, summary, attempts, problems = summarize_one(model, checker, file, title or "", text)
-            except Overloaded:
-                time.sleep(60)  # busy moment at Google: wait a minute and try once more
-                status, summary, attempts, problems = summarize_one(model, checker, file, title or "", text)
+            for wait in (60, 120, 240, None):
+                try:
+                    status, summary, attempts, problems = summarize_one(model, checker, file, title or "", text)
+                    break
+                except Overloaded:
+                    overloads += 1
+                    if wait is None or overloads > 8:
+                        raise
+                    time.sleep(wait)  # busy moment at Google: wait, then try again
         except QuotaUsedUp as e:
             print(f"Gemini says a limit was reached; stopping here (the next run continues). Detail: {str(e)[:400]}")
             break
