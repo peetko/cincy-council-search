@@ -1,0 +1,31 @@
+name: Diagnose
+on:
+  push:
+    branches: [diag, diag2]
+permissions:
+  contents: read
+  models: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: List GitHub Models and try one summary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -sS https://models.github.ai/catalog/models -H "Authorization: Bearer $GH_TOKEN" > catalog.json
+          python3 - <<'PY'
+          import json
+          cat = json.load(open("catalog.json"))
+          print(len(cat), "models")
+          for m in sorted(cat, key=lambda m: (m.get("rate_limit_tier") or "", m["id"])):
+              lim = m.get("limits") or {}
+              print(f'{m.get("rate_limit_tier") or "-":<10} {m["id"]:<45} in={lim.get("max_input_tokens")} out={lim.get("max_output_tokens")}')
+          PY
+          for model in openai/gpt-4.1-mini openai/gpt-5-mini meta/llama-3.3-70b-instruct; do
+            echo "== $model"
+            curl -sS -D headers.txt https://models.github.ai/inference/chat/completions \
+              -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: application/json" \
+              -d "{\"model\": \"$model\", \"max_tokens\": 300, \"messages\": [{\"role\": \"system\", \"content\": \"Summarize Cincinnati legislation in 2 plain sentences. Only use facts in the text.\"}, {\"role\": \"user\", \"content\": \"ORDINANCE (EMERGENCY) AUTHORIZING the City Manager to execute a funding agreement with Groundwork Ohio River Valley to provide one-time operational funding for Green Cincinnati Plan climate resilience programming in Cincinnati; AUTHORIZING the City Manager to expend up to 50,000 dollars of existing resources from Office of Environment and Sustainability General Fund non-personnel operating budget.\"}]}" | head -c 900; echo
+            grep -iE "^(HTTP|x-ratelimit)" headers.txt || true
+          done
