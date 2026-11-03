@@ -12,6 +12,10 @@ on:
         description: "Re-download everything since July 2020 (takes 30-60 min)"
         type: boolean
         default: false
+      summary_files:
+        description: "AI summaries: only these file numbers, comma-separated (blank = the normal queue)"
+        type: string
+        default: ""
       docs_minutes:
         description: "Minutes to spend fetching the full text of legislation (the daily run uses 25)"
         type: number
@@ -92,6 +96,14 @@ jobs:
           # OCR for scanned legislation (reads text off page images)
           sudo apt-get install -y -qq tesseract-ocr poppler-utils > /dev/null
           python scripts/collect_docs.py
+
+      # Plain-language summaries from Google's Gemini (free tier), each checked for accuracy.
+      # Skipped if the GEMINI_API_KEY secret isn't set; a failure here never blocks the update.
+      - name: Write AI summaries
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SUMMARY_FILES: ${{ inputs.summary_files }}
+        run: python scripts/summarize.py || echo "::warning::The AI summaries step failed; the rest of the update continues."
 
       - name: Build statistics
         run: python scripts/build_stats.py

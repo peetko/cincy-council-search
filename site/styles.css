@@ -453,3 +453,6 @@ body.inner .docs-toggle { display: none; }
 .hood-key span:nth-child(2) { display: inline-flex; align-items: center; gap: 6px; }
 .hood-key i { width: 2px; height: 12px; background: #6b7280; display: inline-block; }
 .hood-key span:last-child { text-align: right; }
+.ai-sum { background: #eef3fc; border-left: 3px solid var(--navy); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+.ai-sum p { margin: 0; font-size: 15px !important; line-height: 1.5; }
+.ai-tag { align-self: flex-start; font-size: 11px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: var(--navy); cursor: help; }

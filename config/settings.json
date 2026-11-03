@@ -44,6 +44,13 @@
   "doc_max_chars": 60000,
   "ocr_max_pages": 15,
   "docs_minutes_per_run": 25,
+  "_summaries": "AI summaries (Gemini free tier). summaries_public: show them on the site (false until the first batch is reviewed).",
+  "summaries_public": false,
+  "summary_models": ["gemini-flash-latest", "gemini-2.5-flash"],
+  "summary_kinds": ["ordinance", "resolution"],
+  "summary_max_requests_per_run": 200,
+  "summary_pause_seconds": 7,
+  "summary_max_input_chars": 30000,
 
   "_refresh": "Each run re-checks meetings changed since the last run, plus every meeting in this window (days back / days ahead).",
   "refresh_days_back": 45,

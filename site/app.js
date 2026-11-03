@@ -453,8 +453,18 @@
 
   // After cards render: mark the ones whose full legislation text we have, and for full-text
   // searches show where in that text the words matched.
+  let docsStats = null;
   async function enhanceWithDocs(mids, fts, snipByKey) {
     if (!mids.length || docsAvailable === false) return;
+    if (docsStats && docsStats.summaries_public) {
+      const sums = await docsQuery(`SELECT matter_id, summary FROM summaries WHERE status = 'ok' AND matter_id IN (${mids.join(",")})`, []).catch(() => []);
+      sums.forEach((r) => {
+        const card = document.querySelector(`#result-list article.result[data-mid="${Number(r.matter_id)}"]`);
+        if (!card || card.querySelector(".ai-sum")) return;
+        card.querySelector(".tags").insertAdjacentHTML("afterend",
+          `<div class="ai-sum"><span class="ai-tag" tabindex="0" data-tip="ai_summary">AI summary</span><p>${esc(r.summary)}</p></div>`);
+      });
+    }
     const rows = await docsQuery(`SELECT matter_id FROM docs WHERE status = 'ok' AND matter_id IN (${mids.join(",")})`, []);
     const have = new Set(rows.map((r) => Number(r.matter_id)));
     let docSnips = new Map();
@@ -1424,6 +1434,7 @@
       docsDb().then(() => { $("docs-toggle-wrap").hidden = !docsAvailable; }).catch(() => {});
       // Say how far the collection has got, in the tooltip.
       fetch("data/docs-stats.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null)).then((ds) => {
+        docsStats = ds;
         if (!ds || !ds.total || !GLOSSARY.docs_search) return;
         const pct = Math.round((ds.checked / ds.total) * 100);
         const note = pct >= 99 ? " All legislation has been checked; some has no readable text."
