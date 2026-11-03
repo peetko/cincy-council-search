@@ -1,27 +1,18 @@
-name: Diagnose
+name: Summary trial
 on:
   push:
     branches: [diag2]
-permissions:
-  contents: read
-  models: read
 jobs:
-  check:
+  trial:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     steps:
-      - name: Try GitHub Models
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v5
+      - name: Install Ollama (runs open AI models on this machine)
         run: |
-          for v in 2022-11-28 2026-03-10; do
-            echo "=== catalog, API version $v"
-            curl -sSL -D h.txt "https://models.github.ai/catalog/models" -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" -H "X-GitHub-Api-Version: $v" -o cat.json; cat h.txt | head -12; head -c 400 cat.json; echo
-            echo "=== inference, API version $v"
-            curl -sSL -X POST -D h2.txt "https://models.github.ai/inference/chat/completions" \
-              -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" -H "X-GitHub-Api-Version: $v" -H "Content-Type: application/json" \
-              -d '{"model":"openai/gpt-4.1-mini","messages":[{"role":"user","content":"Summarize in one sentence: ORDINANCE AUTHORIZING the City Manager to accept a $25,000 donation for tree plantings in Northside."}]}' -o out.json
-            cat h2.txt | head -20; head -c 700 out.json; echo
-          done
-          python3 -c "
-          import json; c=json.load(open('cat.json')); print(len(c),'models')
-          for m in sorted(c, key=lambda m:(m.get('rate_limit_tier') or '', m['id'])): print(f\"{m.get('rate_limit_tier')}\t{m['id']}\")" || true
+          curl -fsSL https://ollama.com/install.sh | sh
+          (ollama serve > /tmp/ollama.log 2>&1 &)
+          sleep 5
+          nproc; free -g | head -2
+      - name: Summarize 10 ordinances with three small models
+        run: python3 tests/summary_trial.py llama3.2:3b qwen2.5:3b gemma3:4b
