@@ -103,6 +103,9 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SUMMARY_FILES: ${{ inputs.summary_files }}
+          # Runs started by a code change only do a small batch, so site fixes go live quickly;
+          # the daily run does the big batch.
+          SUMMARY_MAX_REQUESTS: ${{ github.event_name == 'push' && '20' || '' }}
         run: python scripts/summarize.py || echo "::warning::The AI summaries step failed; the rest of the update continues."
 
       - name: Build statistics
@@ -110,6 +113,9 @@ jobs:
 
       - name: Build analysis
         run: python scripts/build_analysis.py
+
+      - name: Build the "What's new" log
+        run: python scripts/build_whatsnew.py
 
       - name: Data check
         run: python scripts/report.py

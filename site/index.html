@@ -444,6 +444,27 @@
   </div>
   </section>
 
+  <section class="view" data-view="whats-new" aria-labelledby="wn-h" hidden>
+    <div class="page-head">
+      <div class="ph-text">
+        <h2 id="wn-h">What's new on this site</h2>
+        <p>What each daily update added over the last two weeks: new agendas and minutes from the Clerk of Council, recent final votes, and newly added full text and AI summaries.</p>
+      </div>
+    </div>
+    <p class="empty" id="wn-status">Loading…</p>
+    <div class="wn" id="wn" hidden>
+      <figure class="chart full">
+        <figcaption><span class="t">Day by day</span><span class="s" id="wn-updated"></span></figcaption>
+        <div class="tablebox"><table class="wn-log"><thead><tr><th scope="col">Day</th><th scope="col" class="num">New agenda &amp; minutes items</th><th scope="col" class="num">Full text added</th><th scope="col" class="num">AI summaries added</th></tr></thead><tbody id="wn-log"></tbody></table></div>
+      </figure>
+      <div class="charts top">
+        <figure class="chart"><figcaption><span class="t">New and updated meetings</span><span class="s">Agendas posted for upcoming meetings, and minutes added for past ones. Click one to see its items.</span></figcaption><ul class="wn-list" id="wn-meetings"></ul></figure>
+        <figure class="chart"><figcaption><span class="t lab">Recent final votes<button type="button" class="tip" data-tip="passed" aria-label="About final votes">i</button></span><span class="s">Ordinances and resolutions passed or defeated by full Council in the last two weeks.</span></figcaption><ul class="wn-list" id="wn-decided"></ul></figure>
+      </div>
+      <figure class="chart full"><figcaption><span class="t">Newest AI summaries</span><span class="s" id="wn-sum-sub"></span></figcaption><ul class="wn-list" id="wn-summaries"></ul></figure>
+    </div>
+  </section>
+
   <footer class="site" id="about">
     <span><b>How current is this?</b> The site updates itself every morning at about 6 a.m. Eastern. Anything the Clerk of Council posts to Legistar (agendas for upcoming meetings, minutes, roll-call votes) shows up here the next morning. Agendas appear before a meeting; minutes and votes appear only once the Clerk publishes them, which is often some time after the meeting. The time of the latest update is at the bottom of this page.</span>
     <span>Source: City of Cincinnati Legistar public data (<a href="https://cincinnatioh.legistar.com">cincinnatioh.legistar.com</a>). This is an independent project, not an official City record or website. The Clerk of Council keeps the official minutes.</span>
@@ -453,6 +474,7 @@
     <!-- OPTIONAL: to invite alert requests, replace [YOUR EMAIL] below and remove the comment markers around the line.
     <span>Want an email when a subject shows up on an agenda? <a href="mailto:[YOUR EMAIL]?subject=Plum%20Street%20Ledger%20alert%20request">Ask to be added to the watch list</a>.</span>
     -->
+    <span><a href="#whats-new">What's new on this site</a>: what each daily update added.</span>
     <span id="updated"></span>
   </footer>
 </main>

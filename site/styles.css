@@ -460,3 +460,12 @@ body.inner .docs-toggle { display: none; }
 .disclaimer { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 4px; font-size: 12px; }
 .ai-tag { display: inline-flex; align-items: center; gap: 5px; }
 .ai-icon { flex: 0 0 auto; color: #2f5bd3; margin-top: -1px; }
+.wn { display: flex; flex-direction: column; gap: 20px; }
+.wn-log { min-width: 520px; }
+.wn-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.wn-list li { display: flex; flex-direction: column; gap: 4px; padding: 10px 0; border-top: 1px solid var(--grid); }
+.wn-list li:first-child { border-top: 0; padding-top: 0; }
+.wn-main { text-align: left; font-size: 15px; }
+.wn-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.wn-outcome { font-size: 13px; font-weight: 700; }
+.wn-outcome.failed { color: #9f0b24; }

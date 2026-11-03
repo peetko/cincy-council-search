@@ -1026,7 +1026,7 @@
   // (#coming-up, #neighborhoods, …). The Search page shows the four question cards
   // until someone searches or browses, then the filters and results.
   const VIEWS = { "search": "Search", "coming-up": "What's coming up", "neighborhoods": "Neighborhoods",
-                  "council": "Council members", "how-it-works": "How City Hall works" };
+                  "council": "Council members", "how-it-works": "How City Hall works", "whats-new": "What's new" };
   const ALIASES = { "": "search", upcoming: "coming-up", trends: "coming-up", members: "council", analysis: "how-it-works" };
   let view = "search", browsing = false, filtersOpen = false;
 
@@ -1045,6 +1045,7 @@
     });
     document.title = v === "search" ? "Plum Street Ledger — search Cincinnati City Council minutes" : `${VIEWS[v]} — Plum Street Ledger`;
     if (v === "how-it-works" && !analysisLoading) analysisLoading = loadAnalysis();
+    if (v === "whats-new") loadWhatsNew();
     if (scroll) window.scrollTo(0, 0);
   }
   function route() { const v = viewFromHash(); if (v && v !== view) showView(v); else if (v) window.scrollTo(0, 0); }
@@ -1171,6 +1172,47 @@
         document.getElementById("search").scrollIntoView({ behavior: "smooth" });
       }
     });
+  }
+
+  // ------------------------------------------------------------- what's new (its own page, loaded on demand)
+  let whatsNewLoaded = false;
+  async function loadWhatsNew() {
+    if (whatsNewLoaded) return;
+    whatsNewLoaded = true;
+    try {
+      const r = await fetch("data/whatsnew.json", { cache: "no-cache" });
+      if (!r.ok) throw new Error("whatsnew.json " + r.status);
+      renderWhatsNew(await r.json());
+    } catch (e) {
+      console.error(e);
+      whatsNewLoaded = false;
+      $("wn-status").textContent = "The log isn't available yet. It's built with each daily update.";
+    }
+  }
+  function renderWhatsNew(w) {
+    $("wn-status").hidden = true;
+    $("wn").hidden = false;
+    const day = (iso) => new Date(iso + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+    const n = (x) => (x ? x.toLocaleString() : "<span class='muted'>–</span>");
+    $("wn-updated").textContent = `Last two weeks · updated ${w.updated_at.replace(" ", " at ")}`;
+    $("wn-log").innerHTML = w.log.length ? w.log.map((d) => `<tr><th scope="row">${esc(day(d.day))}</th><td class="num">${n(d.items)}</td><td class="num">${n(d.full_texts)}</td><td class="num">${n(d.summaries)}</td></tr>`).join("")
+      : `<tr><td colspan="4" class="empty">Nothing new in the last two weeks.</td></tr>`;
+    $("wn-meetings").innerHTML = w.meetings.length ? w.meetings.map((m) => {
+      const title = `${m.body}, ${fmtDate(m.date)}`;
+      const what = m.kind === "agenda" ? `Agenda posted ${esc(day(m.added))}` : `Minutes added ${esc(day(m.added))}`;
+      const pdf = m.kind === "agenda" ? m.agenda_url : (m.minutes_url || m.agenda_url);
+      return `<li><button type="button" class="linkish wn-main" data-meeting="${m.event_id}" data-title="${esc(title)}">${esc(m.body)}, ${esc(day(m.date))}${m.time ? " · " + esc(m.time) : ""}</button>
+        <span class="muted small">${what} · ${plural(m.new_items, "new item")}${pdf ? ` · <a href="${esc(pdf)}" target="_blank" rel="noopener">${m.kind === "agenda" ? "Agenda" : "Minutes"} PDF</a>` : ""}</span></li>`;
+    }).join("") : `<li class="empty">No new agendas or minutes in the last two weeks.</li>`;
+    $("wn-decided").innerHTML = w.decided.length ? w.decided.map((d) => `<li>
+        <span class="wn-row"><button type="button" class="linkish mono" ${goAttr({ file: d.matter_file })}>${esc(d.matter_file || "")}</button>
+        <span class="kind" data-tip="${esc(d.kind)}" tabindex="0">${esc(KIND_LABEL[d.kind] || d.kind)}</span>
+        <span class="wn-outcome ${d.outcome_cat}">${esc(d.outcome || "")}</span><span class="muted small">${esc(day(d.date))}</span></span>
+        <span class="small">${esc(d.title)}</span></li>`).join("") : `<li class="empty">No final votes in the last two weeks.</li>`;
+    $("wn-sum-sub").textContent = w.summaries_total ? `${w.summaries_total.toLocaleString()} pieces of legislation have an AI summary so far; these are the latest.` : "";
+    $("wn-summaries").innerHTML = (w.summaries || []).length ? w.summaries.map((s) => `<li>
+        <span class="wn-row"><button type="button" class="linkish mono" ${goAttr({ file: s.file })}>${esc(s.file)}</button><span class="muted small">added ${esc(day(s.created))}</span></span>
+        <span class="small">${esc(s.summary)}</span></li>`).join("") : `<li class="empty">No AI summaries yet.</li>`;
   }
 
   // ------------------------------------------------------------- analysis (loaded when scrolled into view)

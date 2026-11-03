@@ -265,7 +265,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default=DEFAULT_DB)
     ap.add_argument("--files", default=os.environ.get("SUMMARY_FILES", ""), help="only these file numbers (comma-separated)")
-    ap.add_argument("--max-requests", type=int, default=int(os.environ.get("SUMMARY_MAX_REQUESTS", SETTINGS.get("summary_max_requests_per_run", 200))))
+    ap.add_argument("--max-requests", type=int, default=int(os.environ.get("SUMMARY_MAX_REQUESTS") or SETTINGS.get("summary_max_requests_per_run", 200)))
     ap.add_argument("--redo", action="store_true", help="redo the --files even if already summarized")
     args = ap.parse_args()
     if not KEY:
