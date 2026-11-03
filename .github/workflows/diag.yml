@@ -1,0 +1,24 @@
+name: Summary first batch
+on:
+  push:
+    branches: [diag4]
+jobs:
+  batch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Get the published databases
+        run: |
+          python3 - <<'PY'
+          import json, urllib.request
+          base = "https://peetko.github.io/cincy-council-search/"
+          for name, info_file in [("council", "db-info.json"), ("docs", "docs-info.json")]:
+              info = json.loads(urllib.request.urlopen(base + "data/" + info_file).read())
+              data = b"".join(urllib.request.urlopen(base + info["urlPrefix"] + f"{i:03d}").read() for i in range(info["pieces"]))
+              open(f"site/data/{name}.db", "wb").write(data)
+              print(name, len(data))
+          PY
+      - name: Summarize the 10 test ordinances
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python scripts/summarize.py --files 202600714,202501779,202602490,202601521,202501902,202600032,202501853,202602339,202600970,202600971 --max-requests 60
