@@ -237,6 +237,10 @@ def fetch_one(matter_id, title=""):
     if data is None:
         return "none", "attachment", a.get("MatterAttachmentName"), url, None
     text = clean(file_text(data))
+    if len(text) < MIN_CHARS and data.startswith(b"%PDF") and not OCR_AVAILABLE:
+        # A scan, but the OCR tools aren't installed this run: leave it for a later run.
+        STATS["scans waiting for OCR"] = STATS.get("scans waiting for OCR", 0) + 1
+        return "error", "attachment", a.get("MatterAttachmentName"), url, None
     if len(text) < MIN_CHARS and data.startswith(b"%PDF"):
         note("scanned (no text layer)", a.get("MatterAttachmentName"))
         started = time.time()
