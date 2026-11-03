@@ -1,4 +1,4 @@
-/* Plum Street Ledger — page logic.
+/* Juncta Lucent — page logic.
  *
  * How it works, briefly:
  *  - data/stats.json holds the pre-computed numbers for the side panel and charts.
@@ -322,7 +322,7 @@
     dbPromise = null;
     try { const r = await fetch("data/stats.json", { cache: "no-cache" }); if (r.ok) stats = await r.json(); } catch (e) { /* keep old stats */ }
     if (analysis) loadAnalysis();
-    console.info("Plum Street Ledger: the data was updated while this page was open; reconnected.");
+    console.info("Juncta Lucent: the data was updated while this page was open; reconnected.");
     $("timing").textContent = "The data was just updated; reconnecting…";
     return db();
   }
@@ -1043,7 +1043,7 @@
       a.classList.toggle("on", on);
       if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
     });
-    document.title = v === "search" ? "Plum Street Ledger — search Cincinnati City Council minutes" : `${VIEWS[v]} — Plum Street Ledger`;
+    document.title = v === "search" ? "Juncta Lucent — search Cincinnati City Council records" : `${VIEWS[v]} — Juncta Lucent`;
     if (v === "how-it-works" && !analysisLoading) analysisLoading = loadAnalysis();
     if (v === "whats-new") loadWhatsNew();
     if (scroll) window.scrollTo(0, 0);

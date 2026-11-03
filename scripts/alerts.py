@@ -93,7 +93,7 @@ def build_email(sub, matches, site_url):
                 f"<p style='margin:6px 0'>{safe}</p>"
                 + " · ".join(f"<a href='{html.escape(u)}'>{html.escape(n)}</a>" for n, u in links)
                 + "</div>")
-    footer = ("You get this because your email is on the Plum Street Ledger watch list. "
+    footer = ("You get this because your email is on the Juncta Lucent watch list. "
               "Reply to the sender to change your terms or stop these emails.")
     msg = EmailMessage()
     msg["Subject"] = subject
@@ -140,7 +140,7 @@ def main():
                 matches[term] = hits
         if matches:
             msg = build_email(sub, matches, site_url)
-            msg["From"] = os.environ.get("ALERT_FROM") or user or "plum-street-ledger@localhost"
+            msg["From"] = os.environ.get("ALERT_FROM") or user or "juncta-lucent@localhost"
             outgoing.append(msg)
 
     if not outgoing:

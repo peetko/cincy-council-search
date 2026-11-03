@@ -153,7 +153,7 @@ def pick_attachment(atts):
 
 def download(url):
     """The file's bytes, or None if it's missing (404/410) or too big."""
-    req = urllib.request.Request(url, headers={"User-Agent": "plum-street-ledger (github.com)"})
+    req = urllib.request.Request(url, headers={"User-Agent": "juncta-lucent (github.com)"})
     try:
         with urllib.request.urlopen(req, timeout=90) as resp:
             data = resp.read(MAX_BYTES + 1)

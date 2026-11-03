@@ -29,7 +29,7 @@ def get(path, params=None):
     for attempt in range(6):
         try:
             req = urllib.request.Request(url, headers={"Accept": "application/json",
-                                                       "User-Agent": "plum-street-ledger (github.com)"})
+                                                       "User-Agent": "juncta-lucent (github.com)"})
             with urllib.request.urlopen(req, timeout=60) as resp:
                 request_count += 1
                 time.sleep(PAUSE)

@@ -1,4 +1,4 @@
-# Plum Street Ledger
+# Juncta Lucent
 
 A free, searchable record of Cincinnati City Council and committee meetings since July 2020, with running statistics and optional email alerts when a subject you care about shows up on an agenda.
 

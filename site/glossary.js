@@ -4,7 +4,7 @@
  * and the City Charter as those guides describe it.
  */
 window.GLOSSARY = {
-  site_name: ["Why \u201cPlum Street Ledger\u201d?", "Cincinnati City Hall stands at 801 Plum Street, where City Council meets most Wednesdays. A ledger is a running record, and this site keeps one of everything Council and its committees take up. It's an independent project, not an official City publication."],
+  site_name: ["Why \u201cJuncta Lucent\u201d?", "A play on Cincinnati's motto, Juncta Juvant, which comes from an old legal saying: what is of little use on its own helps when joined. This site joins scattered agendas, minutes, votes and documents so they become clear: in Latin, lucent, \u201cthey shine.\u201d It's an independent project, not an official City publication."],
   // ---- kinds of items
   ordinance: ["Ordinance", "A local law that becomes part of the Cincinnati Municipal Code. It can cover only one subject. Most need 5 of Council's 9 votes and take effect 30 days after the mayor signs them."],
   resolution: ["Resolution", "A statement of Council's position, such as recognizing a person or group, or taking a stance on state or federal action. Simple resolutions aren't legally binding and skip committee. “Legislative resolutions” (like certifying property-tax rates) must pass a committee first."],

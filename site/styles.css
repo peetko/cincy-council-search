@@ -50,9 +50,9 @@ header.site .wrap { padding-top: 20px; padding-bottom: 40px; display: flex; flex
 .topbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
 .brand { display: flex; align-items: center; gap: 12px; color: #fff; text-decoration: none; }
 .brand:hover, .brand:focus, .brand:visited { color: #fff; }  /* the global link-hover navy would hide it on the navy header */
-.brand .logo { width: 40px; height: 40px; border-radius: 9px; background: var(--red); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px rgba(255,255,255,0.9); }
+.brand .logo { width: 40px; height: 40px; border-radius: 9px; background: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px rgba(255,255,255,0.9); overflow: hidden; }
 .brand b { display: block; font-size: 19px; font-weight: 800; letter-spacing: -0.01em; }
-.brand small { display: block; font-size: 12px; color: #c4d0ea; letter-spacing: 0.04em; text-transform: uppercase; }
+.brand small { display: block; font-size: 12.5px; color: #c4d0ea; letter-spacing: 0.01em; }
 nav.main { display: flex; flex-wrap: wrap; gap: 4px; font-size: 15px; font-weight: 600; }
 nav.main a { color: #dbe4f5; text-decoration: none; padding: 10px 14px; border-radius: 8px; }
 nav.main a:hover { color: #fff; background: rgba(255,255,255,0.08); }
