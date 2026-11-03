@@ -1038,6 +1038,7 @@
     view = v;
     document.querySelectorAll("[data-view]").forEach((el) => { el.hidden = el.dataset.view !== v; });
     document.body.classList.toggle("inner", v !== "search");
+    $("menu-label").textContent = v === "search" ? "Menu" : VIEWS[v];
     document.querySelectorAll("nav.main [data-nav]").forEach((a) => {
       const on = a.dataset.nav === v;
       a.classList.toggle("on", on);
@@ -1082,6 +1083,13 @@
   function bind() {
     $("search-form").addEventListener("submit", (e) => { e.preventDefault(); FOCUS.forEach((k) => { state[k] = ""; }); state.q = $("q").value; search(); });
     window.addEventListener("hashchange", route);
+    // The Menu button: opens the list of pages; closes on a choice, a click elsewhere, or Esc.
+    const menuBtn = $("menu-btn"), panel = $("menu-panel");
+    const setMenu = (open) => { panel.hidden = !open; menuBtn.setAttribute("aria-expanded", String(open)); };
+    menuBtn.addEventListener("click", (e) => { e.stopPropagation(); setMenu(panel.hidden); if (!panel.hidden) panel.querySelector("a").focus(); });
+    panel.addEventListener("click", (e) => { if (e.target.closest("a")) setMenu(false); });
+    document.addEventListener("click", (e) => { if (!panel.hidden && !e.target.closest(".menu")) setMenu(false); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !panel.hidden) { setMenu(false); menuBtn.focus(); } });
     const setDocs = (on) => { state.docs = on ? "1" : ""; $("docs-toggle").checked = on; if (state.q.trim() || $("q").value.trim()) search(); else writeUrl(); };
     $("docs-toggle").addEventListener("change", (e) => setDocs(e.target.checked));
     document.addEventListener("click", (e) => { if (e.target.closest("[data-docs-on]")) setDocs(true); });

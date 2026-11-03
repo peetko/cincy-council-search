@@ -25,12 +25,18 @@
         <span><b>Juncta Lucent</b><small>Council records, joined and made clear · since July 2020</small></span>
       </a>
       <nav class="main" aria-label="Main">
-        <a href="#" data-nav="search" class="on">Search</a>
-        <a href="#coming-up" data-nav="coming-up">Coming up</a>
-        <a href="#neighborhoods" data-nav="neighborhoods">Neighborhoods</a>
-        <a href="#council" data-nav="council">Council members</a>
-        <a href="#how-it-works" data-nav="how-it-works">How it works</a>
-        <a href="#about" data-nav="about">About</a>
+        <div class="menu">
+          <button type="button" class="menu-btn" id="menu-btn" aria-expanded="false" aria-controls="menu-panel"><span id="menu-label">Menu</span><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5l3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <div class="menu-panel" id="menu-panel" hidden>
+            <a href="#" data-nav="search" class="on">Search</a>
+            <a href="#coming-up" data-nav="coming-up">Coming up</a>
+            <a href="#neighborhoods" data-nav="neighborhoods">Neighborhoods</a>
+            <a href="#council" data-nav="council">Council members</a>
+            <a href="#how-it-works" data-nav="how-it-works">How it works</a>
+            <a href="#whats-new" data-nav="whats-new">What's new</a>
+          </div>
+        </div>
+        <a href="#about" class="about-link">About</a>
       </nav>
     </div>
 
@@ -50,11 +56,10 @@
         <button type="button" data-try="Kroger">Kroger</button>
         <button type="button" data-try="streetcar">Streetcar</button>
         <button type="button" data-try='"short-term rental"'>Short-term rentals</button>
-        <button type="button" data-try="abatement*">Tax abatements</button>
         <button type="button" data-vote="@split">Split votes</button>
+        <button type="button" class="browse-all" data-browse>Browse all →</button>
       </div>
-      <label class="docs-toggle" id="docs-toggle-wrap" hidden><input type="checkbox" id="docs-toggle"> Also search the full text of legislation<button type="button" class="tip" data-tip="docs_search" aria-label="About full-text search">i</button></label>
-      <p class="hint"><button type="button" class="browse" data-browse>Or browse everything with filters</button> · <button type="button" class="browse tour-link" data-tour>Take the 1-minute tour</button> · Words are matched in any order. Use “quotes” for an exact phrase and * for word endings (zon* finds zoning and rezoning). Hover or tap the <span class="tip-demo" aria-hidden="true">i</span> icons for how Council works.</p>
+      <p class="hint"><span class="tour-new">New here? <button type="button" class="browse" data-tour>Take the 1-minute tour</button> · </span><button type="button" class="browse tips-link" data-tip="search_tips" aria-label="Search tips"><span class="tip-demo" aria-hidden="true">i</span> Search tips</button></p>
     </div>
   </div>
   <div class="river" aria-hidden="true"></div>
@@ -189,6 +194,7 @@
       <section class="card member-card" id="member-card" aria-live="polite" hidden></section>
       <div class="results-head">
         <h2 id="res-h">Loading…</h2>
+        <label class="ft-switch" id="docs-toggle-wrap" hidden><input type="checkbox" id="docs-toggle" role="switch"><span class="sw" aria-hidden="true"></span>Search full text<button type="button" class="tip" data-tip="docs_search" aria-label="About full-text search">i</button></label>
         <div class="sorter" id="sorter" hidden>
           <span id="res-sub"></span>
           <span class="sortlabel">· sort by</span>
@@ -475,7 +481,7 @@
     <!-- OPTIONAL: to invite alert requests, replace [YOUR EMAIL] below and remove the comment markers around the line.
     <span>Want an email when a subject shows up on an agenda? <a href="mailto:[YOUR EMAIL]?subject=Juncta%20Lucent%20alert%20request">Ask to be added to the watch list</a>.</span>
     -->
-    <span><a href="#whats-new">What's new on this site</a>: what each daily update added.</span>
+    <span><a href="#whats-new">What's new on this site</a>: what each daily update added. · <button type="button" class="linkish" data-tour>Take the 1-minute tour</button></span>
     <span id="updated"></span>
   </footer>
 </main>

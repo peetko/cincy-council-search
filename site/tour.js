@@ -15,23 +15,23 @@
       text: "Type an ordinance number, a street, a business, a department or a topic. Use “quotes” for an exact phrase and * for word endings: zon* finds zoning and rezoning." },
     { target: ".tries", title: "Not sure where to start?",
       text: "Tap one of these example searches, or “Split votes” to see where Council members disagreed." },
-    { target: "#docs-toggle-wrap", title: "Go deeper",
-      text: "Agendas only show the opening lines of long legislation. Tick this to also search the full text of ordinances, resolutions and motions." },
-    { target: "#docs-toggle-wrap .tip, .hint .tip-demo", title: "Tap any ⓘ to learn",
-      text: "These explain how Council works in plain language: what an ordinance is, what “three readings” means, why some laws pass “as an emergency.”" },
+    { target: ".hint .tips-link", title: "Tap any ⓘ to learn",
+      text: "Search tips live here. Around the site, these ⓘ icons explain how Council works in plain language: what an ordinance is, what “three readings” means, why some laws pass “as an emergency.”" },
     { target: "#home-cards", title: "Or start with a question",
       text: "See what's coming up at City Hall, what's happening in your neighborhood, how Council members vote, and how the process works." },
-    { target: "nav.main", title: "Every page, one click away",
-      text: "The same pages live up here, so you can jump around from anywhere." },
+    { target: ".menu-btn", title: "Every page, one click away",
+      text: "The same pages, plus What's new, are in this Menu, so you can jump around from anywhere." },
     { title: "One last thing",
-      text: "Results show each piece of legislation's history, votes and, for many, a short AI summary. Summaries are labeled and checked, but always confirm with the full text or the official record. You can replay this tour from the link under the search bar." },
+      text: "Results show each piece of legislation's history, votes and, for many, a short AI summary. Summaries are labeled and checked, but always confirm with the full text or the official record. After a search, switch on “Search full text” to look inside the legislation itself. You can replay this tour from the footer." },
   ];
 
   let i = 0, els = null, lastFocus = null, list = [];
   const visible = (el) => el && el.offsetParent !== null && el.getBoundingClientRect().width > 0;
   const findTarget = (sel) => sel ? sel.split(",").map((s) => document.querySelector(s.trim())).find(visible) : null;
   const steps = () => list;
-  const remember = () => { try { localStorage.setItem(KEY, "1"); } catch (e) { /* private mode: fine */ } };
+  const remember = () => { try { localStorage.setItem(KEY, "1"); } catch (e) { /* private mode: fine */ } hideNew(); };
+  // "New here? Take the tour" under the search bar is only for people who haven't taken it.
+  const hideNew = () => document.querySelectorAll(".tour-new").forEach((el) => { el.hidden = true; });
   const seen = () => { try { return localStorage.getItem(KEY) === "1"; } catch (e) { return true; } };
 
   function build() {
@@ -141,6 +141,7 @@
 
   // First visit: only on the plain home page (not a shared link to a search or another page).
   window.addEventListener("load", () => {
+    if (seen()) hideNew();
     if (seen() || location.search || (location.hash && location.hash !== "#")) return;
     setTimeout(() => { if (!seen() && !location.search && (!location.hash || location.hash === "#")) start(); }, 1200);
   });
