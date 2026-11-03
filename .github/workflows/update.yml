@@ -139,6 +139,11 @@ jobs:
           python scripts/split_db.py --db site/data/docs.db --out docs --info docs-info.json --also site/data/docs.db.prev
           rm -f site/data/docs.db site/data/*.prev   # docs.db is published only in pieces
 
+      # Safety net: if the page's files are broken, missing or cut off, stop here so the
+      # site isn't published and yesterday's version stays up.
+      - name: Check the site before publishing
+        run: python scripts/check_site.py
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
