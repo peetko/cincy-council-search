@@ -1,0 +1,18 @@
+# First names missing from the name dictionary, seen in Council meeting captions.
+# Used by scripts/transcripts.py to find names of members of the public. One per line.
+STEPHAN
+KYLIE
+MARQUICIA
+TONIA
+MARKIEA
+KAREEM
+MEEKA
+DESHAWN
+DESHONDA
+LATONYA
+LATASHA
+SHAQUILLE
+JAMAL
+TAMIKA
+KEISHA
+IESHA

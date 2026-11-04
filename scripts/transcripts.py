@@ -130,6 +130,11 @@ def first_names():
                     names.add(name.upper())
     except Exception:
         pass
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "..", "config", "first_names_extra.txt"), encoding="utf-8") as f:
+            names |= {l.strip().upper() for l in f if l.strip() and not l.startswith("#")}
+    except OSError:
+        pass
     _first_names = names - AMBIGUOUS - FUNCTION
     return _first_names
 
@@ -192,6 +197,9 @@ PC_START = re.compile(r"PUBLIC COMMENT|PUBLIC TESTIMONY|PUBLIC HEARING|PRIVILEGE
 PC_NOT_START = re.compile(r"(?:CONCLUDES?|CLOSES?|CLOSED|ENDS?|ENDED|COMPLETES?|DONE WITH|HEARD|HEAR FROM [A-Z ]{0,30}IN|"
                           r"MENTIONED IN|DURING|SAID IN|RAISED IN|FROM)\s+(?:THE\s+|OUR\s+|TODAY'S\s+)?PUBLIC (?:COMMENT|TESTIMONY)")
 PC_END = re.compile(r"(?:CONCLUDES?|CLOSES?|CLOSED|ENDS|COMPLETES?)\s+(?:THE\s+|OUR\s+)?PUBLIC (?:COMMENT|TESTIMONY|HEARING)|"
+                    r"(?:THAT'S|THAT IS|THAT WAS) (?:IT|ALL|EVERYONE|EVERYBODY) (?:FOR|ON|WITH) (?:THE |OUR )?PUBLIC (?:COMMENT|TESTIMONY)|"
+                    r"ANY (?:OTHER|MORE|FURTHER|ADDITIONAL) PUBLIC (?:COMMENT|TESTIMONY)|"
+                    r"\b(?:GO|MOVE|TURN|GET) (?:ON )?(?:TO|INTO) (?:OUR |THE )?(?:FIRST |NEXT )?(?:AGENDA ITEM|ITEM NUMBER|ITEM NO)|"
                     r"(?:THAT|THAT'S|THAT IS|THOSE ARE) ALL (?:OF )?(?:OUR|THE|MY) (?:SPEAKERS|PUBLIC COMMENT)|"
                     r"NO (?:MORE|FURTHER|OTHER|ADDITIONAL) (?:SPEAKERS|PUBLIC COMMENT|ONE SIGNED)|"
                     r"\bROLL CALL\b|CLERK,? (?:PLEASE |WOULD YOU )?(?:READ|CALL)|"
@@ -274,6 +282,10 @@ def mark_public_comment(tlist):
                     b["_split"] = True
                     queue.insert(0, b)
                     continue
+            if PC_END.search(text, pos):
+                t["pc"] = True       # starts and ends in one turn ("any other public comment? ... item 8")
+                out.append(t)
+                continue
             on, last = True, start
             t["pc"] = True
         else:
@@ -317,15 +329,17 @@ def ends_phrase(word):
     return bool(re.search(r"[,.;:?!]$", word))
 
 
+# (trigger, most words, strict): strict = the first word must be a known first name or an unusual word.
 AFTER_TRIGGERS = [
-    (re.compile(r"\bMY NAME(?:'S|S| IS| HE IS| IS IS)?\s"), 3),
-    (re.compile(r"\bNAME IS\s"), 3),
-    (re.compile(r"\b(?:NEXT|FIRST|LAST|FINAL) SPEAKERS?(?:,|\s+(?:I HAVE|WE HAVE|WILL BE|IS|UP|THAT I HAVE))*(?:\s+IS)?\s"), 3),
-    (re.compile(r"\b(?:ON DECK|UP NEXT)(?:\s+(?:IS|WILL BE|WE HAVE))?\s"), 3),
-    (re.compile(r"\bFOLLOWED BY\s"), 3),
-    (re.compile(r"\b(?:MR|MS|MRS|MISS|DR)\.?\s"), 1),
+    (re.compile(r"\bMY NAME(?:'S|S| IS| HE IS| IS IS)?\s"), 3, False),
+    (re.compile(r"\bNAME IS\s"), 3, False),
+    (re.compile(r"\b(?:NEXT|FIRST|LAST|FINAL) SPEAKERS?(?:,|\s+(?:I HAVE|WE HAVE|WILL BE|IS|UP|THAT I HAVE))*(?:\s+IS)?\s"), 3, True),
+    (re.compile(r"\b(?:ON DECK|UP NEXT)(?:\s+(?:IS|WILL BE|WE HAVE))?\s"), 3, True),
+    (re.compile(r"\bFOLLOWED BY\s"), 3, True),
+    (re.compile(r"\b(?:MR|MS|MRS|MISS|DR)\.?\s"), 1, False),
 ]
-BEFORE_TRIGGERS = re.compile(r",?\s(?:YOU HAVE|YOU'LL HAVE|YOU WILL HAVE|THE FLOOR IS YOURS|YOU'RE UP|YOU ARE UP|"
+BEFORE_TRIGGERS = re.compile(r",?\s(?:YOU HAVE|YOU'LL HAVE|YOU WILL HAVE|THE FLOOR IS YOURS|YOU'RE UP|YOU ARE UP|YOU'RE NEXT|"
+                             r"JOIN US|(?:PLEASE )?COME (?:ON )?(?:UP|FORWARD|DOWN)|IS (?:FIRST|NEXT|UP NEXT)|"
                              r"WILL BE (?:OUR|THE) (?:FIRST|NEXT|LAST|FINAL) SPEAKER|YOU MAY BEGIN|GO AHEAD)")
 
 
@@ -350,8 +364,10 @@ def find_names(words, officials, strong_only=False):
         c = core(words[i])
         return c in officials or (i + 1 < len(words) and f"{c} {core(words[i + 1])}" in officials)
 
-    def take_after(i, n):
+    def take_after(i, n, strict=False):
         got = 0
+        if strict and i < len(words) and core(words[i]) in common and core(words[i]) not in first_names():
+            return
         while i < len(words) and got < n:
             c = core(words[i])
             if got == 0 and c in HONORIFICS and not ends_phrase(words[i]):
@@ -367,11 +383,11 @@ def find_names(words, officials, strong_only=False):
                 break
             i += 1
 
-    for rx, n in AFTER_TRIGGERS:
+    for rx, n, strict in AFTER_TRIGGERS:
         for m in rx.finditer(text + " "):
             i = idx_at.get(m.end())
             if i is not None:
-                take_after(i, n)
+                take_after(i, n, strict)
     for m in BEFORE_TRIGGERS.finditer(text):
         # the word just before the match (its comma, if any, is part of the match)
         i = max(k for k, o in enumerate(offs) if o <= m.start()) if m.start() > 0 else None
@@ -386,8 +402,8 @@ def find_names(words, officials, strong_only=False):
                 break
             if got == 0 and re.search(r"[.?!]$", words[i]):
                 break      # "THANK YOU SO MUCH. YOU HAVE TWO MINUTES": a new sentence, not someone's name
-            if c in common and c not in first_names():
-                break
+            if c in common and c not in first_names() and got != 1:
+                break      # (the word right before a surname may be an unusual first name: "STEPHAN PRYOR")
             hits.add(i)
             got += 1
             i -= 1
@@ -414,12 +430,17 @@ def find_names(words, officials, strong_only=False):
     return hits
 
 
+# The chair calling up speakers, even where public comment wasn't recognized as such.
+SPEAKER_CALL = re.compile(r"FLOOR IS YOURS|PRIVILEGE OF THE FLOOR|YOU HAVE (?:TWO|THREE|ONE|[123]) MINUTES|NEXT SPEAKER|"
+                          r"LAST SPEAKER|FIRST SPEAKER|FOLLOWED BY|ON DECK|COME (?:ON )?UP|SIGNED UP TO SPEAK")
+
+
 def redact(tlist, officials):
     """Replace the names of members of the public with [name]. Returns how many words were removed."""
     found = set()
     for t in tlist:
         words = [w for w, _ in t["tokens"]]
-        if t.get("pc"):
+        if t.get("pc") or SPEAKER_CALL.search(" ".join(words).upper()):
             hits = find_names(words, officials)
         elif not t["label"]:
             # Outside public comment, only clear self-introductions by people who aren't City staff.

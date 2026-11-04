@@ -38,7 +38,7 @@ CACHE = os.environ.get("CAPTION_CACHE", os.path.join(ROOT, ".cache", "captions")
 SINCE = SETTINGS.get("transcripts_since", "2021-01-01")
 USER_AGENT = "JunctaLucent/1.0 (independent council-records search; github.com/peetko/cincy-council-search)"
 # Bump when transcripts.py's rules change: every meeting is processed again (from the cache).
-RULES_VERSION = "1"
+RULES_VERSION = "2"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
