@@ -660,11 +660,17 @@
 
   // After cards render: mark the ones whose full legislation text we have, and for full-text
   // searches show where in that text the words matched.
-  let docsStats = null;
+  // docs-stats.json says whether AI summaries are switched on (and how far the full text has got).
+  // Results wait for it: on a slow connection it can arrive after the first results are shown.
+  let docsStatsPromise = null;
+  const loadDocsStats = () => docsStatsPromise || (docsStatsPromise =
+    fetch("data/docs-stats.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null)).catch(() => null));
   async function enhanceWithDocs(mids, fts, snipByKey) {
     if (!mids.length || docsAvailable === false) return;
+    const docsStats = await loadDocsStats();
     if (docsStats && docsStats.summaries_public) {
-      const sums = await docsQuery(`SELECT matter_id, summary FROM summaries WHERE status = 'ok' AND matter_id IN (${mids.join(",")})`, []).catch(() => []);
+      const sums = await docsQuery(`SELECT matter_id, summary FROM summaries WHERE status = 'ok' AND matter_id IN (${mids.join(",")})`, [])
+        .catch((e) => { console.error("AI summaries couldn't be loaded:", e); return []; });
       sums.forEach((r) => {
         const card = document.querySelector(`#result-list article.result[data-mid="${Number(r.matter_id)}"]`);
         if (!card || card.querySelector(".ai-sum")) return;
@@ -1698,8 +1704,7 @@
       docsDb().then(() => { $("docs-toggle-wrap").hidden = !docsAvailable; }).catch(() => {});
       saidDb().catch(() => {});
       // Say how far the collection has got, in the tooltip.
-      fetch("data/docs-stats.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null)).then((ds) => {
-        docsStats = ds;
+      loadDocsStats().then((ds) => {
         if (!ds || !ds.total || !GLOSSARY.docs_search) return;
         const pct = Math.round((ds.checked / ds.total) * 100);
         const note = pct >= 99 ? " All legislation has been checked; some has no readable text."
