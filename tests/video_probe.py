@@ -1,5 +1,5 @@
-"""Probe 2: caption files on Archive.org - quality, committees, older years, coverage."""
-import json, collections, re, urllib.parse, urllib.request
+"""Probe 3: save the item list and a spread of real caption files to the diag5 branch."""
+import json, re, os, random, urllib.parse, urllib.request, collections
 
 def get(url):
     req = urllib.request.Request(url, headers={"User-Agent": "juncta-lucent probe"})
@@ -8,53 +8,38 @@ def get(url):
 
 def search(q, rows=10000):
     url = "https://archive.org/advancedsearch.php?" + urllib.parse.urlencode(
-        {"q": q, "fl[]": ["identifier", "title", "date"], "sort[]": "date desc", "rows": rows, "output": "json"}, doseq=True)
+        {"q": q, "fl[]": ["identifier", "title", "date", "closed_captioning", "publicdate", "subject"],
+         "sort[]": "date desc", "rows": rows, "output": "json"}, doseq=True)
     return json.loads(get(url))["response"]["docs"]
 
 docs = search("collection:citicable OR collection:citiohv")
-for d in docs:  # a few items store title/date as lists
-    for k in ("title", "date"):
+for d in docs:
+    for k in ("title", "date", "closed_captioning", "publicdate"):
         if isinstance(d.get(k), list):
             d[k] = d[k][0] if d[k] else ""
         d.setdefault(k, "")
-print(len(docs), "items in the two CitiCable collections")
-council = [d for d in docs if re.search(r"city council|committee|council", d.get("title", ""), re.I) and "torrance" not in d.get("title", "").lower()]
-by_year = collections.Counter(d.get("date", "")[:4] for d in council)
-print("council/committee items by year:", dict(sorted(by_year.items())))
-
-def files(ident):
-    return json.loads(get(f"https://archive.org/metadata/{ident}"))
-
-print("\n=== Caption files by year (sample of 4 per year)")
-for year in sorted(by_year):
-    sample = [d for d in council if d.get("date", "").startswith(year)][:: max(1, by_year[year] // 4)][:4]
-    for d in sample:
-        md = files(d["identifier"])
+os.makedirs("probe", exist_ok=True)
+json.dump(docs, open("probe/items.json", "w"), indent=0)
+print(len(docs), "items")
+recent = [d for d in docs if d["date"][:10] >= "2021-05-01" and re.match(r"^\d{8}-[a-z]+", d["identifier"])]
+codes = collections.Counter(d["identifier"].split("-", 1)[1] for d in recent)
+print("codes:", codes.most_common(60))
+random.seed(7)
+pick = []
+by_code = collections.defaultdict(list)
+for d in recent:
+    by_code[d["identifier"].split("-", 1)[1]].append(d)
+for code, items in sorted(by_code.items(), key=lambda kv: -len(kv[1]))[:14]:
+    pick += random.sample(items, min(3, len(items)))
+for d in pick:
+    try:
+        md = json.loads(get(f"https://archive.org/metadata/{d['identifier']}"))
+        srt = next((f["name"] for f in md["files"] if f["name"].endswith(".srt")), None)
+        if not srt:
+            print("no srt", d["identifier"]); continue
+        data = get(f"https://archive.org/download/{d['identifier']}/{urllib.parse.quote(srt)}")
+        open(f"probe/{d['identifier']}.srt", "wb").write(data)
         names = [f["name"] for f in md["files"]]
-        srt = [n for n in names if n.endswith(".srt")]
-        print(f"  {d['date'][:10]} {d['identifier']:<28} cc={md['metadata'].get('closed_captioning')} srt={srt[:1]} | {d['title'][:60]}")
-
-def show(ident, n=40):
-    md = files(ident)
-    txt = next((f["name"] for f in md["files"] if f["name"].endswith(".disc.txt")), None)
-    srt = next((f["name"] for f in md["files"] if f["name"].endswith(".srt")), None)
-    print(f"\n=== {ident}: {md['metadata'].get('title')}")
-    if srt:
-        s = get(f"https://archive.org/download/{ident}/{urllib.parse.quote(srt)}").decode("utf-8", "ignore")
-        cues = re.findall(r"\d+\n(\d\d:\d\d:\d\d),\d+ --> (\d\d:\d\d:\d\d),\d+\n(.*?)(?:\n\n|\Z)", s, re.S)
-        words = sum(len(c[2].split()) for c in cues)
-        print(f"srt: {len(cues)} cues, {words} words, first {cues[0][0] if cues else '-'} last {cues[-1][1] if cues else '-'}")
-        text = " ".join(c[2].replace("\n", " ") for c in cues)
-        print("first 1500 chars:", text[:1500])
-        mid = len(text) // 2
-        print("\nmiddle 1500 chars:", text[mid:mid + 1500])
-    elif txt:
-        print(get(f"https://archive.org/download/{ident}/{urllib.parse.quote(txt)}").decode("utf-8", "ignore")[:2500])
-    else:
-        print("no caption file")
-
-show("10261028-coun")
-show("14261020-psql")
-old = [d for d in council if d.get("date", "")[:4] in ("2020", "2021")]
-if old:
-    show(old[len(old) // 2]["identifier"])
+        print("saved", d["identifier"], srt, len(data), "| files:", [n for n in names if not n.endswith(('.jpg', '.png', '.gif'))][:12])
+    except Exception as e:
+        print("fail", d["identifier"], e)
