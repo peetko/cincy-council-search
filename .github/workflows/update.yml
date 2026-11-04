@@ -4,8 +4,12 @@
 name: Update council data
 
 on:
+  # GitHub runs schedules "best effort": busy days can delay or skip them. So there are two
+  # backups; each first checks whether today's update already ran, and stops if it did.
   schedule:
     - cron: "37 10 * * *"   # daily at 10:37 UTC = 5:37 am EST / 6:37 am EDT
+    - cron: "23 13 * * *"   # backup: 8:23 am EST / 9:23 am EDT
+    - cron: "47 16 * * *"   # backup: 11:47 am EST / 12:47 pm EDT
   workflow_dispatch:
     inputs:
       full_rebuild:
@@ -24,6 +28,7 @@ on:
     branches: [main]
 
 permissions:
+  actions: read     # lets the backup schedules see whether today's update already ran
   contents: write   # only used to keep the schedule alive (see last step)
   pages: write
   id-token: write
@@ -33,7 +38,36 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # A backup schedule only runs if no scheduled update has succeeded yet today (Eastern time).
+  # Pushes and hand-started runs always go ahead.
+  guard:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          since=$(date -u -d "$(TZ=America/New_York date +%F) 00:00 $(TZ=America/New_York date +%z)" +%Y-%m-%dT%H:%M:%SZ)
+          done=0
+          for ev in schedule workflow_dispatch; do   # a hand-started full update counts too
+            n=$(gh run list -R "${{ github.repository }}" --workflow update.yml --event $ev --status success \
+                --limit 20 --json createdAt -q "[.[] | select(.createdAt >= \"$since\")] | length")
+            done=$((done + ${n:-0}))
+          done
+          if [ "$done" -gt 0 ]; then
+            echo "Today's update already ran; this backup run stops here."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "No update yet today; running it now."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: guard
+    if: needs.guard.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 300
     steps:
