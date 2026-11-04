@@ -24,6 +24,10 @@ on:
         description: "Minutes to spend fetching the full text of legislation (the daily run uses 25)"
         type: number
         default: 25
+      transcript_minutes:
+        description: "Minutes to spend fetching meeting transcripts (the daily run uses 30; use more to catch up faster)"
+        type: number
+        default: 30
   push:
     branches: [main]
 
@@ -114,6 +118,33 @@ jobs:
             echo "No full-text database yet - starting one."
           fi
 
+      # Meeting transcripts live in a third database (transcripts.db), also published only in pieces.
+      - name: Download the transcripts database the site is currently serving
+        run: |
+          base="${{ steps.pages.outputs.base_url }}"
+          if curl -fsSL --retry 3 -o /tmp/transcripts-info.json "$base/data/transcripts-info.json"; then
+            n=$(python -c "import json; print(json.load(open('/tmp/transcripts-info.json'))['pieces'])")
+            prefix=$(python -c "import json; print(json.load(open('/tmp/transcripts-info.json'))['urlPrefix'])")
+            : > site/data/transcripts.db
+            for i in $(seq 0 $((n - 1))); do
+              curl -fsSL --retry 3 "$base/${prefix}$(printf %03d "$i")" >> site/data/transcripts.db
+            done
+            echo "Starting from the published transcripts database ($(du -h site/data/transcripts.db | cut -f1))."
+            cp site/data/transcripts.db site/data/transcripts.db.prev
+          else
+            echo "No transcripts database yet - starting one."
+          fi
+
+      # The original caption files, kept between runs so changes to how they're processed can be
+      # applied to every meeting without downloading them all again.
+      - name: Restore saved caption files
+        id: captions-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/captions
+          key: captions-${{ github.run_id }}
+          restore-keys: captions-
+
       - name: Download the saved neighborhood map (or fetch it from OpenStreetMap)
         run: |
           curl -fsSL -o site/data/neighborhoods.geojson "${{ steps.pages.outputs.base_url }}/data/neighborhoods.geojson" || rm -f site/data/neighborhoods.geojson
@@ -134,6 +165,25 @@ jobs:
           sudo apt-get install -y -qq tesseract-ocr poppler-utils > /dev/null \
             || echo "::warning::Couldn't install the OCR tools this run; scanned documents will be read on a later run."
           python scripts/collect_docs.py
+
+      # What was said at meetings: the closed captions CitiCable posts to archive.org with each video.
+      # Names of members of the public are removed. A failure here never blocks the update.
+      - name: Collect meeting transcripts
+        env:
+          TRANSCRIPT_MINUTES: ${{ inputs.transcript_minutes || (github.event_name == 'push' && 10) || 30 }}
+        run: |
+          pip install --quiet gender-guesser || echo "::warning::Couldn't install the first-name list; fewer names will be found."
+          if ! python scripts/collect_transcripts.py; then
+            echo "::warning::The transcripts step failed; keeping the published transcripts as they were."
+            if [ -f site/data/transcripts.db.prev ]; then cp site/data/transcripts.db.prev site/data/transcripts.db; else rm -f site/data/transcripts.db; fi
+          fi
+
+      - name: Save caption files for next time
+        if: always() && hashFiles('.cache/captions/*') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/captions
+          key: captions-${{ hashFiles('.cache/captions/*') }}
 
       # Plain-language summaries from Google's Gemini (free tier), each checked for accuracy.
       # Skipped if the GEMINI_API_KEY secret isn't set; a failure here never blocks the update.
@@ -171,7 +221,8 @@ jobs:
         run: |
           python scripts/split_db.py --also site/data/council.db.prev
           python scripts/split_db.py --db site/data/docs.db --out docs --info docs-info.json --also site/data/docs.db.prev
-          rm -f site/data/docs.db site/data/*.prev   # docs.db is published only in pieces
+          python scripts/split_db.py --db site/data/transcripts.db --out transcripts --info transcripts-info.json --also site/data/transcripts.db.prev
+          rm -f site/data/docs.db site/data/transcripts.db site/data/*.prev   # published only in pieces
 
       # Safety net: if the page's files are broken, missing or cut off, stop here so the
       # site isn't published and yesterday's version stays up.

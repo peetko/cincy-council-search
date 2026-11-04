@@ -53,6 +53,11 @@
   "summary_pause_seconds": 7,
   "summary_max_input_chars": 30000,
 
+  "_transcripts": "Meeting transcripts (closed captions CitiCable posts to archive.org): first date, minutes per daily run, and people whose names are never removed (besides Council members, who come from the database).",
+  "transcripts_since": "2021-01-01",
+  "transcript_minutes_per_run": 30,
+  "transcript_officials_extra": ["John Cranley", "Sheryl Long", "Paula Boggs Muething", "John Curp", "Emily Smart Woerner", "Andrew Dudas", "Karen Alder", "Teresa Theetge", "Eliot Isaac", "Lisa Carrion", "Melissa Autry"],
+
   "_refresh": "Each run re-checks meetings changed since the last run, plus every meeting in this window (days back / days ahead).",
   "refresh_days_back": 45,
   "refresh_days_ahead": 30

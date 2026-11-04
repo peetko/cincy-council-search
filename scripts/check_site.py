@@ -60,7 +60,7 @@ for rel in ("data/stats.json", "data/db-info.json", "data/analysis.json"):
     except Exception as e:
         problems.append(f"{rel} is missing or unreadable ({e.__class__.__name__})")
 
-for info_file, required in (("data/db-info.json", True), ("data/docs-info.json", False)):
+for info_file, required in (("data/db-info.json", True), ("data/docs-info.json", False), ("data/transcripts-info.json", False)):
     if not os.path.exists(path(info_file)):
         if required:
             problems.append(f"{info_file} is missing")

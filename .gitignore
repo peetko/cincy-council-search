@@ -18,3 +18,7 @@ site/data/docs-info.json
 site/data/docs-stats.json
 site/data/*.prev
 site/data/whatsnew.json
+site/data/transcripts/
+site/data/transcripts-info.json
+site/data/transcripts-stats.json
+.cache/
