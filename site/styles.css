@@ -566,3 +566,6 @@ body.said-mode #docs-toggle-wrap, body.said-mode #docs-offer, body.said-mode #cs
 .said-body .read-more[aria-expanded="true"] { order: 3; }
 .res-tabs .short { display: none; }
 @media (max-width: 560px) { .res-tabs .long { display: none; } .res-tabs .short { display: inline; } }
+/* Line the switch's label up with the text beside it: its baseline comes from the words, not the toggle graphic. */
+.results-head .ft-switch { align-items: baseline; }
+.results-head .ft-switch .sw, .results-head .ft-switch .tip { align-self: center; }

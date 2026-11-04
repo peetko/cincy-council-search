@@ -37,6 +37,7 @@ import urllib.request
 import zipfile
 
 import legistar
+import ocr_clean
 from common import DEFAULT_DB, SETTINGS
 
 DOCS_DB = os.path.join(os.path.dirname(DEFAULT_DB), "docs.db")
@@ -100,6 +101,8 @@ def rtf_to_text(rtf):
 
 
 RULES_VERSION = "4"  # bump when the rules change, to re-check what was saved under older rules
+OCR_CLEAN_VERSION = "1"  # bump when ocr_clean.py changes, to clean the saved OCR text again
+VOCAB = set()          # real words, for cleaning OCR text (built in main from text that didn't need OCR)
 MARKER = re.compile(r"(?im)^\s*\.\.\s*(title|body|header|footer|recommendation|summary|end)\b[^\n]*$")
 
 
@@ -245,6 +248,8 @@ def fetch_one(matter_id, title=""):
         note("scanned (no text layer)", a.get("MatterAttachmentName"))
         started = time.time()
         text = clean(ocr_pdf(data))
+        if VOCAB:
+            text, _ = ocr_clean.clean_ocr(text, VOCAB)
         STATS["OCR seconds"] = round(STATS.get("OCR seconds", 0) + time.time() - started)
         if len(text) >= MIN_CHARS:
             return "ok", "ocr", a.get("MatterAttachmentName"), url, text
@@ -295,6 +300,28 @@ def main():
         docs.execute("INSERT OR REPLACE INTO meta VALUES ('rules_version', ?)", (RULES_VERSION,))
         docs.commit()
         print(f"Collection rules changed: {n} saved results will be fetched again.")
+    # Clean up OCR text: drop the nonsense that charts, stamps and sideways text turn into.
+    global VOCAB
+    hoods = [r[0] for r in main_db.execute("SELECT name FROM hood_names")] if main_db.execute(
+        "SELECT 1 FROM sqlite_master WHERE name = 'hood_names'").fetchone() else []
+    VOCAB = ocr_clean.load_vocab((r[0] for r in docs.execute("SELECT text FROM docs WHERE status = 'ok' AND source IN ('text', 'attachment')")),
+                                 extra=[w for h in hoods for w in re.findall(r"[A-Za-z]+", h)])
+    row = docs.execute("SELECT value FROM meta WHERE key = 'ocr_clean_version'").fetchone()
+    if not row or row[0] != OCR_CLEAN_VERSION:
+        n = dropped = emptied = 0
+        for r in docs.execute("SELECT matter_id, text FROM docs WHERE status = 'ok' AND source = 'ocr'").fetchall():
+            cleaned, kept = ocr_clean.clean_ocr(r["text"], VOCAB)
+            if len(cleaned) < MIN_CHARS:   # nothing readable left: treat as a scan with no usable text
+                docs.execute("UPDATE docs SET status = 'scan', text = NULL, chars = 0 WHERE matter_id = ?", (r["matter_id"],))
+                emptied += 1
+            else:
+                docs.execute("UPDATE docs SET text = ?, chars = ? WHERE matter_id = ?", (cleaned, len(cleaned), r["matter_id"]))
+            n += 1
+            dropped += 1 - kept
+        docs.execute("INSERT OR REPLACE INTO meta VALUES ('ocr_clean_version', ?)", (OCR_CLEAN_VERSION,))
+        docs.commit()
+        print(f"Cleaned the OCR text of {n} scanned documents (vocabulary of {len(VOCAB):,} words): on average "
+              f"{(dropped / n if n else 0):.0%} of each was unreadable and removed; {emptied} had nothing readable left.")
     queue, total = todo(main_db, docs, today)
     print(f"{len(queue)} of {total} pieces of legislation need their full text fetched."
           + ("" if OCR_AVAILABLE else " (OCR tools not installed: scanned documents will be skipped.)"))
