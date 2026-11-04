@@ -14,7 +14,33 @@ if [ -n "$id" ]; then
   unzip -q -o /tmp/site-data.zip -d site/data
   rm -f /tmp/site-data.zip
 else
-  echo "No saved data yet; copying what the live site is serving."
-  python scripts/fetch_data.py --live "$site"
+  # Before the first nightly update saves its data: use the website package the latest data
+  # update built (a "github-pages" artifact from an "Update council data" run), not the live
+  # site, which web caches can serve out of date for a few minutes after a publish.
+  pages=$(python3 - "$repo" <<'PY'
+import json, os, sys, urllib.request
+repo = sys.argv[1]
+def api(path):
+    req = urllib.request.Request(f"https://api.github.com/repos/{repo}/{path}",
+                                 headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"], "Accept": "application/vnd.github+json"})
+    return json.load(urllib.request.urlopen(req, timeout=60))
+arts = [a for a in api("actions/artifacts?name=github-pages&per_page=100")["artifacts"] if not a["expired"]]
+arts.sort(key=lambda a: a["created_at"], reverse=True)
+for a in arts:
+    run = api(f"actions/runs/{a['workflow_run']['id']}")
+    if run["path"].endswith("update.yml") and run["conclusion"] == "success":
+        print(a["id"]); break
+PY
+)
+  if [ -n "$pages" ]; then
+    echo "No saved data yet; using the website package from the latest data update (artifact $pages)."
+    curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -o /tmp/pages.zip "https://api.github.com/repos/$repo/actions/artifacts/$pages/zip"
+    unzip -q -o /tmp/pages.zip -d /tmp/pages
+    tar -xf /tmp/pages/artifact.tar -C site ./data
+    rm -rf /tmp/pages /tmp/pages.zip
+  else
+    echo "No saved data yet; copying what the live site is serving."
+    python scripts/fetch_data.py --live "$site"
+  fi
 fi
 du -sh site/data
