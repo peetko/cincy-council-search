@@ -192,6 +192,10 @@
 
     <section class="results" id="results" aria-labelledby="res-h" aria-live="polite">
       <section class="card member-card" id="member-card" aria-live="polite" hidden></section>
+      <div class="res-tabs" id="res-tabs" role="tablist" aria-label="What to search" hidden>
+        <button type="button" role="tab" data-said="" aria-selected="true">Legislation<span class="long"> &amp; agendas</span> <span class="n" id="tab-items-n"></span></button>
+        <button type="button" role="tab" data-said="1" aria-selected="false"><span class="long">Meeting transcripts</span><span class="short">Transcripts</span> <span class="n" id="tab-said-n"></span></button>
+      </div>
       <div class="results-head">
         <h2 id="res-h">Loading…</h2>
         <label class="ft-switch" id="docs-toggle-wrap" hidden><input type="checkbox" id="docs-toggle" role="switch"><span class="sw" aria-hidden="true"></span>Search full text<button type="button" class="tip" data-tip="docs_search" aria-label="About full-text search">i</button></label>
@@ -474,7 +478,7 @@
 
   <footer class="site" id="about">
     <span><b>How current is this?</b> The site updates itself every morning at about 6 a.m. Eastern. Anything the Clerk of Council posts to Legistar (agendas for upcoming meetings, minutes, roll-call votes) shows up here the next morning. Agendas appear before a meeting; minutes and votes appear only once the Clerk publishes them, which is often some time after the meeting. The time of the latest update is at the bottom of this page.</span>
-    <span>Source: City of Cincinnati Legistar public data (<a href="https://cincinnatioh.legistar.com">cincinnatioh.legistar.com</a>). This is an independent project, not an official City record or website. The Clerk of Council keeps the official minutes.</span>
+    <span>Source: City of Cincinnati Legistar public data (<a href="https://cincinnatioh.legistar.com">cincinnatioh.legistar.com</a>). Meeting transcripts come from the closed captions CitiCable posts with each meeting video on the <a href="https://archive.org/details/citicable">Internet Archive</a>. This is an independent project, not an official City record or website. The Clerk of Council keeps the official minutes.</span>
     <span>Explanations of how Council works are adapted from WVXU's guides: <a href="https://www.wvxu.org/politics/2026-05-28/understand-cincinnati-council-legislation-agendas">How to understand Council legislation and agendas</a> and <a href="https://www.wvxu.org/politics/2026-05-19/cincinnati-government-action-opinion">How to keep up with Cincinnati government</a>.</span>
     <span>Topic and department tags come from keyword lists, so treat the trend numbers as a guide, not an exact count.</span>
     <span class="disclaimer"><b>Disclaimer.</b> This site is provided “as is,” for general information only, without warranties of any kind, express or implied, including accuracy, completeness or timeliness. It is not legal advice and not an official record of the City of Cincinnati. Some content is generated automatically, including AI-written summaries, text read from scanned documents, topic tags and statistics, and may contain errors. To the fullest extent permitted by law, the site and its operator are not liable for any errors or omissions, or for any loss or damage arising from use of or reliance on this information. Always confirm with the official records kept by the Clerk of Council.</span>

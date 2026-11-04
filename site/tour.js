@@ -22,7 +22,7 @@
     { target: ".menu-btn", title: "Every page, one click away",
       text: "The same pages, plus What's new, are in this Menu, so you can jump around from anywhere." },
     { title: "One last thing",
-      text: "Results show each piece of legislation's history, votes and, for many, a short AI summary. Summaries are labeled and checked, but always confirm with the full text or the official record. After a search, switch on “Search full text” to look inside the legislation itself. You can replay this tour from the footer." },
+      text: "Results show each piece of legislation's history, votes and, for many, a short AI summary. Summaries are labeled and checked, but always confirm with the full text or the official record. After a search, switch on “Search full text” to look inside the legislation itself, or open the “Meeting transcripts” tab to search what was said at meetings and jump to that moment in the video. You can replay this tour from the footer." },
   ];
 
   let i = 0, els = null, lastFocus = null, list = [];

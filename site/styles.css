@@ -520,3 +520,49 @@ nav.main .about-link { color: #dbe4f5; padding: 8px 10px; font-size: 15px; }
 .ft-switch input:checked + .sw::after { transform: translateX(14px); }
 .ft-switch input:focus-visible + .sw { outline: 3px solid var(--red); outline-offset: 2px; }
 @media (max-width: 720px) { .menu-panel { left: 0; right: auto; } }
+
+/* ---------------------------------------------------------------- what was said (transcripts) */
+.res-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 0 0 12px; overflow-x: auto; }
+.res-tabs button { background: none; border: 0; border-bottom: 3px solid transparent; padding: 8px 12px 9px; font: inherit; font-size: 15px;
+  font-weight: 600; color: var(--ink-2); cursor: pointer; white-space: nowrap; margin-bottom: -1px; }
+.res-tabs button:hover { color: var(--navy); }
+.res-tabs button[aria-selected="true"] { color: var(--navy); border-bottom-color: var(--navy); }
+.res-tabs .n { display: inline-block; min-width: 1.5em; margin-left: 4px; padding: 1px 7px; border-radius: 999px; background: var(--badge);
+  color: var(--ink-2); font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.res-tabs .n:empty { display: none; }
+.res-tabs button[aria-selected="true"] .n { background: var(--navy); color: #fff; }
+body.said-mode #docs-toggle-wrap, body.said-mode #docs-offer, body.said-mode #csv { display: none !important; }
+.said-note { font-size: 13.5px; color: var(--ink-3); margin: 0 0 12px; line-height: 1.45; }
+.said-note .tip { margin-left: 4px; }
+.said-ignored { color: var(--ink-2); }
+.card.said { padding-bottom: 12px; }
+.said-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 6px; }
+.said-date { font-weight: 700; color: var(--ink); }
+.said-body-name { font-weight: 600; color: var(--ink-2); }
+.said-head .muted { margin-left: auto; }
+.said-list { list-style: none; margin: 0; padding: 0; }
+.said-moment { display: flex; gap: 12px; padding: 10px 0; border-top: 1px solid var(--grid); }
+.said-moment:first-child { border-top: 0; }
+.said-time { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px; border-radius: 999px;
+  background: var(--badge); color: var(--navy); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; text-decoration: none; }
+.said-time:hover { background: var(--navy); color: #fff; }
+.said-time.small { height: 22px; font-size: 12px; padding: 0 7px; }
+.said-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.said-body .snip { margin: 0; }
+.said-who { font-size: 12.5px; font-weight: 700; color: var(--ink-2); letter-spacing: 0.01em; }
+.said-who.pc { color: #6b4f00; cursor: help; }
+.said-context { display: flex; flex-direction: column; gap: 10px; }
+.said-ctx { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: baseline; color: var(--ink-3); }
+.said-ctx .said-who { grid-column: 2; }
+.said-ctx p { grid-column: 2; margin: 0; line-height: 1.5; }
+.said-ctx .said-time { grid-row: span 2; }
+.said-ctx.this { color: var(--ink); }
+.said-all { margin: 2px 0 6px; font-size: 14px; }
+@media (max-width: 560px) {
+  .said-moment { flex-direction: column; gap: 6px; }
+  .said-time { align-self: flex-start; }
+}
+.said-body .said-context { order: 2; }
+.said-body .read-more[aria-expanded="true"] { order: 3; }
+.res-tabs .short { display: none; }
+@media (max-width: 560px) { .res-tabs .long { display: none; } .res-tabs .short { display: inline; } }

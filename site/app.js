@@ -12,7 +12,7 @@
   const PAGE = 20;
   const pageSize = () => (!state.q.trim() && !anyFilter()) ? 10 : PAGE;
   const $ = (id) => document.getElementById(id);
-  const state = { q: "", kind: "", body: "", sponsor: "", dept: "", outcome: "", vote: "", topic: "", hood: "", date: "", file: "", item: "", meeting: "", member: "", sort: "newest", offset: 0, period: "year", docs: "" };
+  const state = { q: "", kind: "", body: "", sponsor: "", dept: "", outcome: "", vote: "", topic: "", hood: "", date: "", file: "", item: "", meeting: "", member: "", sort: "newest", offset: 0, period: "year", docs: "", said: "" };
   const FILTERS = ["kind", "body", "sponsor", "dept", "topic", "hood", "outcome", "vote", "date"];
   const FOCUS = ["file", "item", "meeting", "member"];  // set by links (a permalink or a meeting), not by dropdowns
   let stats = null;
@@ -129,6 +129,217 @@
   const docMatches = (fts) => docsQuery(`SELECT rowid AS m FROM docs_fts WHERE docs_fts MATCH ? ORDER BY rank LIMIT 5000`, [fts])
     .then((rows) => rows.map((r) => Number(r.m)).filter(Number.isFinite));
 
+  // ------------------------------------------------------------- what was said (meeting transcripts)
+  // A third database, transcripts.db: passages of each meeting's closed captions (from the videos
+  // CitiCable posts to archive.org). A passage's id is YYMMDD, the meeting's slot that day
+  // (0 = City Council) and the passage number, so newest-first and date filters need only the index.
+  let saidPromise = null, saidAvailable = null, saidStats = null;
+  function saidDb() {
+    if (!saidPromise) {
+      const base = new URL(".", location.href);
+      saidPromise = fetch("data/transcripts-info.json", { cache: "no-cache" })
+        .then((r) => (r.ok ? r.json() : null)).catch(() => null)
+        .then((info) => {
+          saidAvailable = !!info;
+          if (!info) return null;
+          fetch("data/transcripts-stats.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null))
+            .then((j) => { saidStats = j; }).catch(() => {});
+          const config = { serverMode: "chunked", requestChunkSize: 65536, databaseLengthBytes: info.databaseLengthBytes,
+            serverChunkSize: info.serverChunkSize, suffixLength: info.suffixLength,
+            urlPrefix: new URL(info.urlPrefix, base).href, cacheBust: info.version };
+          return createDbWorker([{ from: "inline", config }],
+            new URL("vendor/sqlite.worker.js", base).href, new URL("vendor/sql-wasm.wasm", base).href).then((w) => w.db);
+        });
+    }
+    return saidPromise;
+  }
+  async function saidQuery(sql, args) {
+    const d = await saidDb();
+    if (!d) return [];
+    try { return await d.query(sql, args); }
+    catch (e) {
+      if (!isStale(e)) throw e;
+      saidPromise = null;
+      const d2 = await saidDb();
+      return d2 ? d2.query(sql, args) : [];
+    }
+  }
+  // Passage ids for a date: YYMMDD × 100000.
+  const saidId = (iso) => Number(iso.slice(2, 4) + iso.slice(5, 7) + iso.slice(8, 10)) * 100000;
+  // The filters that apply to transcripts: dates, and Council / committees / one committee.
+  // Returns SQL conditions on passages_fts.rowid, plus the names of filters that don't apply.
+  function saidWhere() {
+    const where = [], args = [];
+    const r = dateRange();
+    if (r && r[0]) { where.push("passages_fts.rowid >= ?"); args.push(saidId(r[0])); }
+    if (r && r[1]) { where.push("passages_fts.rowid < ?"); args.push(saidId(addDays(r[1], 1))); }
+    if (state.body === "@council") where.push("(passages_fts.rowid / 10000) % 10 = 0");
+    else if (state.body === "@committees") where.push("(passages_fts.rowid / 10000) % 10 <> 0");
+    else if (state.body) {
+      where.push(`passages_fts.rowid / 10000 IN (SELECT CAST(substr(date,3,2) || substr(date,6,2) || substr(date,9,2) AS INTEGER) * 10 + slot
+                  FROM tmeetings WHERE body = ?)`);
+      args.push(state.body);
+    }
+    const ignored = ["kind", "sponsor", "dept", "topic", "hood", "outcome", "vote", "member", "file", "item", "meeting"].filter((k) => state[k]);
+    return { where, args, ignored };
+  }
+  const fmtClock = (t) => { t = Math.max(0, Math.round(t)); const h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = t % 60;
+    return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s).padStart(2, "0"); };
+  const videoAt = (item, t) => `https://archive.org/details/${encodeURIComponent(item)}?start=${Math.max(0, Math.floor(t) - 3)}`;
+  const SAID_PAGE = 8;
+  let saidCountCache = { key: "", n: null, meetings: null };
+
+  async function saidCounts(fts) {
+    const { where, args } = saidWhere();
+    const key = fts + "|" + where.join("&") + "|" + args.join("&");
+    if (saidCountCache.key === key) return saidCountCache;
+    const W = ["passages_fts MATCH ?", ...where].join(" AND ");
+    const [c] = await saidQuery(`SELECT COUNT(*) AS n, COUNT(DISTINCT passages_fts.rowid / 10000) AS meetings FROM passages_fts WHERE ${W}`, [fts, ...args]);
+    saidCountCache = { key, n: c ? c.n : 0, meetings: c ? c.meetings : 0 };
+    return saidCountCache;
+  }
+
+  // The tabs above the results: agenda items | what was said. Counts fill in as they arrive.
+  function renderTabs(fts, itemsN) {
+    if (saidAvailable === null) { saidDb().then(() => renderTabs(fts, itemsN)).catch(() => {}); return; }
+    const show = !!(fts && saidAvailable && !/\{title/.test(fts));
+    $("res-tabs").hidden = !show;
+    if (!show) return;
+    document.querySelectorAll("#res-tabs [data-said]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.said === (state.said ? "1" : ""))));
+    if (itemsN != null) $("tab-items-n").textContent = itemsN.toLocaleString();
+    saidCounts(fts).then((c) => { $("tab-said-n").textContent = c.n.toLocaleString(); }).catch(() => { $("tab-said-n").textContent = ""; });
+  }
+
+  async function runSaidInner(append) {
+    const fts = ftsQuery(state.q);
+    const { where, args, ignored } = saidWhere();
+    const W = ["passages_fts MATCH ?", ...where].join(" AND ");
+    if (!append) {
+      $("res-h").innerHTML = `<span class="searching"><span class="spinner" aria-hidden="true"></span>Searching what was said…</span>`;
+      const d = await db();  // agenda-item count for the other tab
+      const { allArgs, hits } = searchParts(null);
+      const [ci] = await d.query(`SELECT COUNT(DISTINCT k) AS n FROM ${hits}`, allArgs).catch(() => [{ n: null }]);
+      renderTabs(fts, ci ? ci.n : null);
+      const c = await saidCounts(fts);
+      const qShown = /"/.test(state.q) ? esc(state.q.trim()) : `“${esc(state.q.trim())}”`;
+      $("res-h").innerHTML = `${c.n.toLocaleString()} moment${c.n === 1 ? "" : "s"} for ${qShown}`;
+      $("res-sub").textContent = `in ${c.meetings.toLocaleString()} meeting${c.meetings === 1 ? "" : "s"}`;
+      $("sorter").hidden = !c.n;
+      document.querySelectorAll("#sorter button[data-sort]").forEach((b) => { b.hidden = false; b.setAttribute("aria-pressed", String(b.dataset.sort === state.sort)); });
+      document.querySelector("#sorter .sortlabel").hidden = false;
+      document.querySelector('#sorter [data-tip="relevance"]').hidden = false;
+      $("csv").hidden = true; $("spark").hidden = true; $("docs-offer").hidden = true;
+      const s = saidStats;
+      const span = s && s.first ? ` Covers ${fmtDate(s.first)} to ${fmtDate(s.last)}${s.left ? " (older meetings are still being added)" : ""}.` : "";
+      $("result-list").innerHTML = `<p class="said-note">Searching what was said at Council and committee meetings, from each meeting's closed captions.
+        They're typed live during the broadcast, so some words are misheard. Names of members of the public are removed.${span}<button type="button" class="tip" data-tip="said_search" aria-label="About meeting transcripts">i</button>
+        ${ignored.length ? `<br><span class="said-ignored">The ${ignored.map((k) => k === "dept" ? "department" : k).join(", ")} filter${ignored.length === 1 ? " doesn't" : "s don't"} apply to what was said, so all meetings are shown.</span>` : ""}</p>`;
+      $("more").dataset.total = c.meetings;
+      if (!c.n) { $("result-list").insertAdjacentHTML("beforeend", `<div class="card notice">Nothing matches in what was said. Try fewer words or a word ending with *.</div>`); $("more").hidden = true; return; }
+    }
+    // Step 1: which meetings, in order (reads only the index).
+    const order = state.sort === "relevance" ? "MIN(score)" : "k DESC";
+    const groups = await saidQuery(`SELECT k, COUNT(*) AS n FROM (SELECT passages_fts.rowid / 10000 AS k${state.sort === "relevance" ? ", bm25(passages_fts) AS score" : ""}
+                                    FROM passages_fts WHERE ${W} LIMIT -1) GROUP BY k ORDER BY ${order} LIMIT ${SAID_PAGE} OFFSET ${state.offset}`, [fts, ...args]);
+    if (!groups.length) { $("more").hidden = true; return; }
+    // Step 2: the matching passages in those meetings; the best three of each are shown.
+    const keys = groups.map((g) => g.k);
+    const ranges = keys.map((k) => `passages_fts.rowid BETWEEN ${k * 10000} AND ${k * 10000 + 9999}`).join(" OR ");
+    const hitRows = await saidQuery(`SELECT passages_fts.rowid AS id, bm25(passages_fts) AS score FROM passages_fts WHERE passages_fts MATCH ? AND (${ranges})`, [fts]);
+    const byK = new Map(keys.map((k) => [k, []]));
+    hitRows.forEach((h) => { const k = Math.floor(h.id / 10000); if (byK.has(k)) byK.get(k).push(h); });
+    const shownIds = [];
+    byK.forEach((list) => { list.sort((a, b) => a.score - b.score).slice(0, 3).forEach((h) => shownIds.push(h.id)); });
+    const snips = await saidQuery(`SELECT p.id, p.item, p.t, p.speaker, p.pc, snippet(passages_fts, 0, char(1), char(2), ' … ', 34) AS snip
+                                   FROM passages_fts JOIN passages p ON p.id = passages_fts.rowid
+                                   WHERE passages_fts MATCH ? AND passages_fts.rowid IN (${shownIds.join(",")})`, [fts]);
+    const items = [...new Set(snips.map((x) => x.item))];
+    const meetings = await saidQuery(`SELECT item, event_id, date, body, is_council, title, duration FROM tmeetings WHERE item IN (${marks(items)})`, items);
+    const mByItem = new Map(meetings.map((m) => [m.item, m]));
+    const html = keys.map((k) => {
+      const list = snips.filter((x) => Math.floor(x.id / 10000) === k).sort((a, b) => a.id - b.id);
+      if (!list.length) return "";
+      const m = mByItem.get(list[0].item) || { item: list[0].item, date: "", body: "Meeting" };
+      const total = byK.get(k).length;
+      return renderSaidMeeting(m, list, total, k);
+    }).join("");
+    $("result-list").insertAdjacentHTML("beforeend", html);
+    $("more").hidden = Number($("more").dataset.total) <= state.offset + SAID_PAGE;
+  }
+
+  function speakerTag(x) {
+    if (x.speaker) return `<span class="said-who">${esc(x.speaker)}</span>`;
+    if (x.pc) return `<span class="said-who pc" tabindex="0" data-tip="said_public">Public comment</span>`;
+    return "";
+  }
+  function renderMoment(x, item) {
+    return `<li class="said-moment" data-pid="${x.id}">
+        <a class="said-time" href="${esc(videoAt(item, x.t))}" target="_blank" rel="noopener" aria-label="Watch from ${fmtClock(x.t)}">
+          <svg width="11" height="11" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z" fill="currentColor"/></svg>${fmtClock(x.t)}</a>
+        <div class="said-body">${speakerTag(x)}<p class="snip">${esc(x.snip || "").replace(/\u0001/g, "<mark>").replace(/\u0002/g, "</mark>")}</p>
+          <button type="button" class="linkish read-more" data-said-context="${x.id}" aria-expanded="false">Read more</button>
+          <div class="said-context" hidden></div></div>
+      </li>`;
+  }
+  function renderSaidMeeting(m, list, total, k) {
+    const links = [];
+    if (m.event_id) links.push(`<button type="button" class="linkish" data-meeting="${m.event_id}" data-title="${esc((m.body || "") + ", " + fmtDate(m.date))}">This meeting's agenda items</button>`);
+    links.push(`<a href="https://archive.org/details/${encodeURIComponent(m.item)}" target="_blank" rel="noopener">Full video ↗</a>`);
+    const more = total - list.length;
+    return `<article class="card result said" data-k="${k}">
+        <div class="said-head"><span class="said-date">${esc(fmtDate(m.date))}</span><span class="said-body-name">${esc(m.body || m.title || "")}</span>
+          <span class="muted small">${total} moment${total === 1 ? "" : "s"}</span></div>
+        <ol class="said-list">${list.map((x) => renderMoment(x, m.item)).join("")}</ol>
+        ${more > 0 ? `<button type="button" class="linkish said-all" data-said-all="${k}" data-item="${esc(m.item)}">Show ${more} more moment${more === 1 ? "" : "s"} in this meeting</button>` : ""}
+        <div class="links">${links.join("")}</div>
+      </article>`;
+  }
+  async function saidShowAll(btn) {
+    const k = Number(btn.dataset.saidAll), item = btn.dataset.item;
+    btn.textContent = "Loading…";
+    const fts = ftsQuery(state.q);
+    const shown = new Set([...btn.closest("article").querySelectorAll("[data-pid]")].map((el) => Number(el.dataset.pid)));
+    const rows = await saidQuery(`SELECT p.id, p.t, p.speaker, p.pc, snippet(passages_fts, 0, char(1), char(2), ' … ', 34) AS snip
+                                  FROM passages_fts JOIN passages p ON p.id = passages_fts.rowid
+                                  WHERE passages_fts MATCH ? AND passages_fts.rowid BETWEEN ? AND ? ORDER BY passages_fts.rowid`, [fts, k * 10000, k * 10000 + 9999]);
+    const ol = btn.closest("article").querySelector(".said-list");
+    ol.innerHTML = rows.map((x) => shown.has(x.id) ? ol.querySelector(`[data-pid="${x.id}"]`).outerHTML : renderMoment(x, item)).join("");
+    btn.remove();
+  }
+  // "Read more": the whole passage, with the one before and after for context.
+  async function saidContext(btn) {
+    const box = btn.nextElementSibling, open = btn.getAttribute("aria-expanded") === "true";
+    if (open) { box.hidden = true; btn.setAttribute("aria-expanded", "false"); btn.textContent = "Read more"; btn.previousElementSibling.hidden = false; return; }
+    if (!box.dataset.loaded) {
+      btn.textContent = "Loading…";
+      const id = Number(btn.dataset.saidContext);
+      const rows = await saidQuery(`SELECT id, item, t, speaker, pc, text FROM passages WHERE id BETWEEN ? AND ? ORDER BY id`, [id - 1, id + 1]);
+      const item = (rows.find((r) => r.id === id) || {}).item;
+      box.innerHTML = rows.filter((r) => r.item === item).map((r) => `<div class="said-ctx${r.id === id ? " this" : ""}">
+          <a class="said-time small" href="${esc(videoAt(r.item, r.t))}" target="_blank" rel="noopener">${fmtClock(r.t)}</a>
+          ${speakerTag(r)}<p>${highlightTerms(r.text)}</p></div>`).join("");
+      box.dataset.loaded = "1";
+    }
+    box.hidden = false; btn.previousElementSibling.hidden = true;
+    btn.setAttribute("aria-expanded", "true"); btn.textContent = "Show less";
+  }
+
+  // The date filter as [from, to] (either may be null), or null for any date.
+  function dateRange() {
+    const t = today();
+    const year = Number(t.slice(0, 4));
+    const month = Number(t.slice(5, 7));
+    const qStart = String(3 * Math.floor((month - 1) / 3) + 1).padStart(2, "0");
+    const ranges = {
+      mtd: [t.slice(0, 8) + "01", t], qtd: [year + "-" + qStart + "-01", t],
+      upcoming: [t, null], "90d": [addDays(t, -90), t], "12m": [addDays(t, -365), t],
+      ytd: [year + "-01-01", t], lastyear: [(year - 1) + "-01-01", (year - 1) + "-12-31"],
+    };
+    // Custom ranges look like "2026-06-01..2026-06-30" (set by clicking a chart).
+    const custom = /^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$/.exec(state.date || "");
+    return custom ? [custom[1], custom[2]] : (ranges[state.date] || null);
+  }
+
   // Filters apply to the slim "facets" table (alias f), which keeps searches light.
   function whereClause() {
     const where = [], args = [];
@@ -152,18 +363,7 @@
     }
     if (state.vote === "@split") where.push("f.dissent <> ''");
     else if (state.vote) { where.push("f.dissent LIKE ?"); args.push("%" + state.vote + "|%"); }
-    const t = today();
-    const year = Number(t.slice(0, 4));
-    const month = Number(t.slice(5, 7));
-    const qStart = String(3 * Math.floor((month - 1) / 3) + 1).padStart(2, "0");
-    const ranges = {
-      mtd: [t.slice(0, 8) + "01", t], qtd: [year + "-" + qStart + "-01", t],
-      upcoming: [t, null], "90d": [addDays(t, -90), t], "12m": [addDays(t, -365), t],
-      ytd: [year + "-01-01", t], lastyear: [(year - 1) + "-01-01", (year - 1) + "-12-31"],
-    };
-    // Custom ranges look like "2026-06-01..2026-06-30" (set by clicking a chart).
-    const custom = /^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$/.exec(state.date || "");
-    const r = custom ? [custom[1], custom[2]] : ranges[state.date];
+    const r = dateRange();
     if (r) {
       if (r[0]) { where.push("f.date >= ?"); args.push(r[0]); }
       if (r[1]) { where.push("f.date <= ?"); args.push(r[1]); }
@@ -219,12 +419,15 @@
     else { $("res-h").innerHTML = `<span class="searching"><span class="spinner" aria-hidden="true"></span>Searching…</span>`; $("timing").textContent = ""; }
     await ensureFreshDb();
     try {
-      try { await runSearchInner(append); }
+      const said = !!(state.said && ftsQuery(state.q) && (await saidDb()));
+      const inner = said ? runSaidInner : runSearchInner;
+      document.body.classList.toggle("said-mode", said);
+      try { await inner(append); }
       catch (e) {
         if (!isStale(e)) throw e;
         // The data was republished while this page was open: reconnect and try once more.
         await reconnect();
-        await runSearchInner(append);
+        await inner(append);
       }
     } catch (e) {
       console.error(e);
@@ -233,10 +436,13 @@
       renderNothing("That search could not run. Try removing punctuation, or reload the page. (" + esc(e.message || e) + ")");
     } finally {
       $("results").classList.remove("busy");
-      $("more").textContent = "Show more results";
+      $("more").textContent = document.body.classList.contains("said-mode") ? "Show more meetings" : "Show more results";
       const secs = ((performance.now() - started) / 1000).toFixed(1);
       const total = stats ? stats.items_indexed.toLocaleString() : "all";
-      $("timing").textContent = (state.q.trim() || anyFilter()) ? `Searched ${total} agenda and minutes items in ${secs} seconds` : "";
+      $("timing").textContent = !(state.q.trim() || anyFilter()) ? ""
+        : document.body.classList.contains("said-mode")
+          ? `Searched ${saidStats ? saidStats.meetings.toLocaleString() + " meeting transcripts" : "meeting transcripts"} in ${secs} seconds`
+          : `Searched ${total} agenda and minutes items in ${secs} seconds`;
     }
   }
 
@@ -285,6 +491,7 @@
       if (!append) {
         const [c] = await d.query(`SELECT COUNT(DISTINCT k) AS n, COUNT(DISTINCT ev) AS meetings FROM ${hits}`, allArgs);
         renderHead(c.n, c.meetings, !!fts);
+        renderTabs(fts, c.n);
         $("docs-offer").hidden = !(fts && !state.docs && docsAvailable && !/\{title/.test(fts));
         if (useDocs) $("res-sub").textContent += ", including the full text of legislation";
         if (fts) {
@@ -952,7 +1159,7 @@
   }
 
   // ------------------------------------------------------------- state <-> URL
-  const KEYS = ["q", ...FILTERS, ...FOCUS, "sort", "docs"];
+  const KEYS = ["q", ...FILTERS, ...FOCUS, "sort", "docs", "said"];
   // Make the dropdowns show the current filters; a custom date range gets its own option.
   function syncFilterControls(dateLabel) {
     const sel = $("f-date");
@@ -1119,7 +1326,14 @@
       setTimeout(search, 0);
     });
     document.querySelectorAll("#sorter button").forEach((b) => b.addEventListener("click", () => { state.sort = b.dataset.sort; search(); }));
-    $("more").addEventListener("click", () => { state.offset += pageSize(); runSearch(true); });
+    $("more").addEventListener("click", () => { state.offset += document.body.classList.contains("said-mode") ? SAID_PAGE : pageSize(); runSearch(true); });
+    document.querySelectorAll("#res-tabs [data-said]").forEach((b) => b.addEventListener("click", () => { state.said = b.dataset.said; search(); }));
+    document.addEventListener("click", (e) => {
+      const ctx = e.target.closest("[data-said-context]");
+      if (ctx) { saidContext(ctx).catch((err) => { console.error(err); ctx.textContent = "Couldn't load"; }); return; }
+      const all = e.target.closest("[data-said-all]");
+      if (all) { saidShowAll(all).catch((err) => { console.error(err); all.textContent = "Couldn't load"; }); }
+    });
     $("csv").addEventListener("click", downloadCsv);
     document.querySelectorAll(".toggle button[data-period]").forEach((b) => b.addEventListener("click", () => { state.period = b.dataset.period; renderPeriod(); }));
     document.addEventListener("click", (e) => {
@@ -1140,7 +1354,7 @@
       const mt = e.target.closest("[data-meeting]");
       if (mt) {
         [...FILTERS, ...FOCUS].forEach((k) => { state[k] = ""; });
-        state.meeting = mt.dataset.meeting; $("q").value = ""; state.q = "";
+        state.meeting = mt.dataset.meeting; $("q").value = ""; state.q = ""; state.said = "";
         $("res-h").dataset.meetingTitle = mt.dataset.title;
         syncFilterControls(); search();
         document.getElementById("res-h").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1482,6 +1696,7 @@
       if (view === "search") search(); else updateHome();  // opened on another page: don't jump to results
       setTimeout(() => { if (!analysisLoading) analysisLoading = loadAnalysis(); }, 1500);  // for the home-card teaser
       docsDb().then(() => { $("docs-toggle-wrap").hidden = !docsAvailable; }).catch(() => {});
+      saidDb().catch(() => {});
       // Say how far the collection has got, in the tooltip.
       fetch("data/docs-stats.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null)).then((ds) => {
         docsStats = ds;
