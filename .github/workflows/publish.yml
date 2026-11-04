@@ -1,0 +1,61 @@
+# Publishes the website: the latest code from the repo plus the latest data from the nightly
+# update. Runs on every code change, and at the end of every data update. Takes a few minutes,
+# so fixes go live quickly even while a long data update is running.
+name: Publish site
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  actions: read     # to find the data saved by the latest update
+  contents: read
+  pages: write
+  id-token: write
+
+# One publish at a time. A newer one waiting replaces an older one waiting, which is fine:
+# every run publishes the latest code with the latest data.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up GitHub Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Get the latest data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/get_data.sh "${{ github.repository }}" "${{ steps.pages.outputs.base_url }}"
+
+      # Safety net: if the page's files are broken, missing or cut off, stop here so the
+      # site isn't published and the current version stays up.
+      - name: Check the site before publishing
+        run: python scripts/check_site.py
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

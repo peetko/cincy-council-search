@@ -1,15 +1,19 @@
-# Runs every morning: downloads new/changed meetings from Legistar, rebuilds the
-# statistics, emails agenda alerts, and publishes the site to GitHub Pages.
+# The nightly data update: downloads new and changed meetings from Legistar, the full text of
+# legislation, meeting transcripts and AI summaries, rebuilds the statistics, emails agenda alerts,
+# saves the data, then asks "Publish site" (publish.yml) to put it on the website.
+# Code changes don't run this; they only run "Publish site", which takes a few minutes.
 # You can also run it by hand: Actions tab > "Update council data" > Run workflow.
 name: Update council data
 
 on:
-  # GitHub runs schedules "best effort": busy days can delay or skip them. So there are two
-  # backups; each first checks whether today's update already ran, and stops if it did.
+  # Overnight, so the long work never holds up daytime fixes, and just after Gemini's free daily
+  # allowance resets (midnight Pacific = 3 am Eastern). GitHub runs schedules "best effort": busy
+  # times can delay or skip them, so there are two backups; each first checks whether today's
+  # update already ran, and stops if it did.
   schedule:
-    - cron: "37 10 * * *"   # daily at 10:37 UTC = 5:37 am EST / 6:37 am EDT
-    - cron: "23 13 * * *"   # backup: 8:23 am EST / 9:23 am EDT
-    - cron: "47 16 * * *"   # backup: 11:47 am EST / 12:47 pm EDT
+    - cron: "37 8 * * *"    # 3:37 am EST / 4:37 am EDT
+    - cron: "23 10 * * *"   # backup: 5:23 am EST / 6:23 am EDT
+    - cron: "47 11 * * *"   # backup: 6:47 am EST / 7:47 am EDT
   workflow_dispatch:
     inputs:
       full_rebuild:
@@ -28,22 +32,22 @@ on:
         description: "Minutes to spend fetching meeting transcripts (the daily run uses 30; use more to catch up faster)"
         type: number
         default: 30
-  push:
-    branches: [main]
 
 permissions:
-  actions: read     # lets the backup schedules see whether today's update already ran
+  actions: write    # see whether today's update already ran; start "Publish site" at the end
   contents: write   # only used to keep the schedule alive (see last step)
-  pages: write
-  id-token: write
 
+# One data update at a time. (Publishing has its own queue, so this never holds up a fix.)
 concurrency:
-  group: pages
+  group: data-update
   cancel-in-progress: false
 
+env:
+  SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+
 jobs:
-  # A backup schedule only runs if no scheduled update has succeeded yet today (Eastern time).
-  # Pushes and hand-started runs always go ahead.
+  # A backup schedule only runs if no update has succeeded yet today (Eastern time).
+  # Hand-started runs always go ahead.
   guard:
     runs-on: ubuntu-latest
     outputs:
@@ -81,81 +85,33 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Set up GitHub Pages
-        id: pages
-        uses: actions/configure-pages@v5
-
-      # The database is not stored in the repo (it would bloat it). Instead each
-      # run starts from the copy the live site is serving and only adds changes.
-      - name: Download the database the site is currently serving
-        if: ${{ !inputs.full_rebuild }}
+      # The databases aren't stored in the repo (they'd bloat it). Each update starts from the
+      # data the last one saved, and only adds changes.
+      - name: Get the latest data
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p site/data
-          if curl -fsSL -o site/data/council.db "${{ steps.pages.outputs.base_url }}/data/council.db"; then
-            echo "Starting from the published database ($(du -h site/data/council.db | cut -f1))."
-            cp site/data/council.db site/data/council.db.prev   # published alongside the new one
-          else
-            echo "No published database yet - doing the full first-time download."
-            rm -f site/data/council.db
-          fi
-
-      # The full text of legislation lives in a separate database (docs.db), published
-      # only in pieces. Rebuild it from those pieces so the backfill carries on.
-      - name: Download the full-text database the site is currently serving
-        run: |
-          base="${{ steps.pages.outputs.base_url }}"
-          mkdir -p site/data
-          if curl -fsSL --retry 3 -o /tmp/docs-info.json "$base/data/docs-info.json"; then
-            n=$(python -c "import json; print(json.load(open('/tmp/docs-info.json'))['pieces'])")
-            prefix=$(python -c "import json; print(json.load(open('/tmp/docs-info.json'))['urlPrefix'])")
-            : > site/data/docs.db
-            for i in $(seq 0 $((n - 1))); do
-              curl -fsSL --retry 3 "$base/${prefix}$(printf %03d "$i")" >> site/data/docs.db
-            done
-            echo "Starting from the published full-text database ($(du -h site/data/docs.db | cut -f1))."
-            cp site/data/docs.db site/data/docs.db.prev
-          else
-            echo "No full-text database yet - starting one."
-          fi
-
-      # Meeting transcripts live in a third database (transcripts.db), also published only in pieces.
-      - name: Download the transcripts database the site is currently serving
-        run: |
-          base="${{ steps.pages.outputs.base_url }}"
-          if curl -fsSL --retry 3 -o /tmp/transcripts-info.json "$base/data/transcripts-info.json"; then
-            n=$(python -c "import json; print(json.load(open('/tmp/transcripts-info.json'))['pieces'])")
-            prefix=$(python -c "import json; print(json.load(open('/tmp/transcripts-info.json'))['urlPrefix'])")
-            : > site/data/transcripts.db
-            for i in $(seq 0 $((n - 1))); do
-              curl -fsSL --retry 3 "$base/${prefix}$(printf %03d "$i")" >> site/data/transcripts.db
-            done
-            echo "Starting from the published transcripts database ($(du -h site/data/transcripts.db | cut -f1))."
-            cp site/data/transcripts.db site/data/transcripts.db.prev
-          else
-            echo "No transcripts database yet - starting one."
-          fi
+          scripts/get_data.sh "${{ github.repository }}" "$SITE_URL"
+          python scripts/fetch_data.py --assemble ${{ inputs.full_rebuild && '--fresh-council' || '' }}
 
       # The original caption files, kept between runs so changes to how they're processed can be
       # applied to every meeting without downloading them all again.
       - name: Restore saved caption files
-        id: captions-cache
         uses: actions/cache/restore@v4
         with:
           path: .cache/captions
           key: captions-${{ github.run_id }}
           restore-keys: captions-
 
-      - name: Download the saved neighborhood map (or fetch it from OpenStreetMap)
-        run: |
-          curl -fsSL -o site/data/neighborhoods.geojson "${{ steps.pages.outputs.base_url }}/data/neighborhoods.geojson" || rm -f site/data/neighborhoods.geojson
-          python scripts/fetch_neighborhoods.py
+      - name: Neighborhood map (saved copy, or fetched from OpenStreetMap)
+        run: python scripts/fetch_neighborhoods.py
 
       - name: Collect meetings, agenda items and votes from Legistar
         run: python scripts/collect.py
 
       - name: Collect the full text of legislation
         env:
-          DOCS_MINUTES: ${{ inputs.docs_minutes || (github.event_name == 'push' && 8) || 25 }}
+          DOCS_MINUTES: ${{ inputs.docs_minutes || 25 }}
         run: |
           pip install --quiet pypdf
           # OCR for scanned legislation (reads text off page images). Refresh the package list
@@ -170,7 +126,7 @@ jobs:
       # Names of members of the public are removed. A failure here never blocks the update.
       - name: Collect meeting transcripts
         env:
-          TRANSCRIPT_MINUTES: ${{ inputs.transcript_minutes || (github.event_name == 'push' && 10) || 30 }}
+          TRANSCRIPT_MINUTES: ${{ inputs.transcript_minutes || 30 }}
         run: |
           pip install --quiet gender-guesser || echo "::warning::Couldn't install the first-name list; fewer names will be found."
           if ! python scripts/collect_transcripts.py; then
@@ -191,9 +147,6 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SUMMARY_FILES: ${{ inputs.summary_files }}
-          # Runs started by a code change only do a small batch, so site fixes go live quickly;
-          # the daily run does the big batch.
-          SUMMARY_MAX_REQUESTS: ${{ github.event_name == 'push' && '20' || '' }}
         run: python scripts/summarize.py || echo "::warning::The AI summaries step failed; the rest of the update continues."
 
       - name: Build statistics
@@ -214,7 +167,7 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
-          SITE_URL: ${{ steps.pages.outputs.base_url }}
+          SITE_URL: ${{ env.SITE_URL }}
         run: python scripts/alerts.py
 
       - name: Split the database into pieces for the website
@@ -225,17 +178,27 @@ jobs:
           rm -f site/data/docs.db site/data/transcripts.db site/data/*.prev   # published only in pieces
 
       # Safety net: if the page's files are broken, missing or cut off, stop here so the
-      # site isn't published and yesterday's version stays up.
-      - name: Check the site before publishing
+      # broken data is never saved or published.
+      - name: Check the site before saving
         run: python scripts/check_site.py
 
-      - uses: actions/upload-pages-artifact@v3
+      # Save the data for "Publish site" (and for tomorrow's update to start from).
+      - name: Save the data
+        uses: actions/upload-artifact@v4
         with:
-          path: site
+          name: site-data
+          path: site/data
+          retention-days: 90
+          compression-level: 1
+
+      - name: Publish the site with the new data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run publish.yml -R "${{ github.repository }}" --ref main
 
       # GitHub pauses scheduled workflows in public repos after 60 days without
       # a commit. This adds an empty commit every ~50 quiet days so the daily
-      # update keeps running. (Commits made here do not re-trigger this workflow.)
+      # update keeps running. (Commits made here do not re-trigger any workflow.)
       - name: Keep the daily schedule alive
         if: github.event_name == 'schedule'
         run: |
@@ -246,14 +209,3 @@ jobs:
             git commit --allow-empty -m "Keep scheduled updates running"
             git push
           fi
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Publish to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
