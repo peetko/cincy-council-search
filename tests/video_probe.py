@@ -12,6 +12,11 @@ def search(q, rows=10000):
     return json.loads(get(url))["response"]["docs"]
 
 docs = search("collection:citicable OR collection:citiohv")
+for d in docs:  # a few items store title/date as lists
+    for k in ("title", "date"):
+        if isinstance(d.get(k), list):
+            d[k] = d[k][0] if d[k] else ""
+        d.setdefault(k, "")
 print(len(docs), "items in the two CitiCable collections")
 council = [d for d in docs if re.search(r"city council|committee|council", d.get("title", ""), re.I) and "torrance" not in d.get("title", "").lower()]
 by_year = collections.Counter(d.get("date", "")[:4] for d in council)
