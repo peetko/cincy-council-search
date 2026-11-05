@@ -323,6 +323,14 @@ def main():
                        MAX(CASE WHEN status='ok' THEN date END) AS last FROM tmeetings""").fetchone()
     print(f"Transcripts: {s['ok'] or 0} of {s['n']} meetings ({s['w'] or 0:,} words, {s['p'] or 0:,} passages, "
           f"{s['nr'] or 0:,} name mentions removed), {s['first']} to {s['last']}.")
+    m = con.execute("""SELECT SUM(event_id IS NOT NULL) AS matched, COUNT(*) AS n, SUM(public_comment) AS pc, SUM(passages) AS p
+                       FROM tmeetings WHERE status = 'ok'""").fetchone()
+    print(f"Matched to a Legistar meeting: {m['matched'] or 0} of {m['n']}. Passages during public comment: "
+          f"{m['pc'] or 0:,} of {m['p'] or 0:,} ({(m['pc'] or 0) / max(1, m['p'] or 0):.0%}).")
+    unmatched = con.execute("""SELECT body, COUNT(*) AS n FROM tmeetings WHERE status = 'ok' AND event_id IS NULL
+                               GROUP BY body ORDER BY n DESC LIMIT 12""").fetchall()
+    if unmatched:
+        print("Not matched (shown with archive.org's name): " + "; ".join(f"{r['body']} ({r['n']})" for r in unmatched))
     with open(os.path.join(os.path.dirname(out_path), "transcripts-stats.json"), "w") as f:
         json.dump({"meetings": s["ok"] or 0, "videos": s["n"], "first": s["first"], "last": s["last"],
                    "words": s["w"] or 0, "updated": today, "left": left}, f)
