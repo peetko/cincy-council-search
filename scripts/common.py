@@ -253,7 +253,9 @@ def tag(text, groups):
 # Case-sensitive on purpose: the sponsor list ends at an ALL-CAPS verb such as
 # "AUTHORIZING", or at ", from …", ", on 9/24/2025", "WE MOVE".
 SPONSOR_RX = re.compile(
-    r"[Ss]ubmitted by (.+?)(?:,\s*(?:from|on|dated)\b|,?\s+(?:WE\s+)?MOVE\b|,\s*[A-Z]{4,}\b|$)")
+    r"[Ss]ubmitted by (.+?)(?:,\s*(?:from|on|dated)\b|,?\s+(?:(?:WE|I)\s+)?MOVE\b|,\s*[A-Z]{4,}\b|$)")
+# A sponsor is one to three capitalized words ("Owens", "Jan-Michele Kearney"), nothing else.
+SPONSOR_NAME = re.compile(r"^[A-Z][\w.'’\-]*(?: [A-Z][\w.'’\-]*){0,2}$")
 TITLE_WORDS = re.compile(r"\b(Vice Mayor|President Pro Tem(?:pore)?|Councilmembers?|Council ?[Mm]embers?|Mayor)\b")
 
 
@@ -271,7 +273,8 @@ def parse_sponsors(title):
         raw = re.sub(r"(?<!Vice )\bMayor(?:\s+[A-Z][a-z]+){0,2}", "", raw)
     for part in re.split(r",|\band\b|&", TITLE_WORDS.sub("", raw)):
         part = part.strip(" .")
-        if part and len(part) < 40 and part.lower() not in (n.lower() for n in names):
+        if part and len(part) < 40 and SPONSOR_NAME.match(part) and part not in ("I", "We", "To") \
+                and part.lower() not in (n.lower() for n in names):
             names.append(part)
     return "; ".join(names)
 

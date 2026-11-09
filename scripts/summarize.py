@@ -82,7 +82,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS summaries (
   matter_id  INTEGER PRIMARY KEY,
   matter_file TEXT,
-  status     TEXT,      -- ok (passed every check) / flagged (failed checks; not shown) / error
+  status     TEXT,      -- ok (passed every check) / flagged (failed checks; not shown) / stale (text changed; not shown) / error
   summary    TEXT,
   model      TEXT,
   attempts   INTEGER,
@@ -172,6 +172,25 @@ def numbers_in_words(text):
     return found
 
 
+NUMBER_RX = re.compile(r"\$?\d[\d,]*(?:\.\d+)?")
+
+
+def plain_number(num):
+    """'$250,000.00' -> '250000', '1,234.50' -> '1234.5', '14.' -> '14'."""
+    n = num.replace(",", "").replace("$", "").rstrip(".")
+    if "." in n:
+        n = n.rstrip("0").rstrip(".")
+    return n.lstrip("0") or ("0" if n else "")
+
+
+def numbers_in_text(text):
+    """Every number written in digits in the text, as whole numbers: '$250,000' is 250000, and does
+    not also count as 50000 or 25. Scanned text sometimes has a space after a comma ('250, 000'),
+    so that spelling is read both ways."""
+    joined = re.sub(r"(?<=\d),\s+(?=\d{3}\b)", ",", text)
+    return {plain_number(n) for src in (text, joined) for n in NUMBER_RX.findall(src)} - {""}
+
+
 def quote_found(quote, ntext):
     q = norm(quote)
     if not q:
@@ -188,7 +207,7 @@ def quote_found(quote, ntext):
 
 
 def claim_traceable(claim, ntext, digits_text, word_nums):
-    nums = [n.replace(",", "").replace("$", "").rstrip(".") for n in re.findall(r"\$?\d[\d,]*(?:\.\d+)?", claim)]
+    nums = [plain_number(n) for n in NUMBER_RX.findall(claim)]
     names = [w for w in re.findall(r"\b[A-Z][\w&'’-]{2,}", claim) if w not in COMMON_CAPS]
     if not nums and not names:
         return False
@@ -207,7 +226,7 @@ def tidy(summary):
 def local_checks(summary, facts, text):
     problems = []
     ntext = norm(text)
-    digits_text = re.sub(r"[,\s]", "", text)
+    digits_text = numbers_in_text(text)
     word_nums = numbers_in_words(text)
     for f in facts:
         if quote_found(f.get("quote", ""), ntext):
@@ -216,8 +235,8 @@ def local_checks(summary, facts, text):
         claim = f.get("claim", "")
         if not claim_traceable(claim, ntext, digits_text, word_nums):
             problems.append(f"The supporting quote for “{claim}” isn't in the text.")
-    for num in re.findall(r"\$?\d[\d,]*(?:\.\d+)?", summary):
-        plain = num.replace(",", "").replace("$", "").rstrip(".")
+    for num in NUMBER_RX.findall(summary):
+        plain = plain_number(num)
         if not plain:
             continue
         if plain not in digits_text and not (plain.isdigit() and int(plain) in word_nums):
@@ -303,7 +322,11 @@ def main():
         if prev and prev[0] == h and not (args.redo and only) and prev[1] != "error" \
                 and not (prev[1] == "flagged" and prev[2] != PROMPT_VERSION):
             continue
+        if prev and prev[0] != h and prev[1] == "ok":
+            # The text changed since this summary was written: stop showing it until it's redone.
+            docs.execute("UPDATE summaries SET status = 'stale' WHERE matter_id = ?", (mid,))
         queue.append((last or "", mid, file, title, text, h))
+    docs.commit()
     queue.sort(reverse=True)  # newest first
     print(f"{len(queue)} pieces of legislation to summarize" + (f" (limited to {len(only)} files)" if only else "") + ".")
 

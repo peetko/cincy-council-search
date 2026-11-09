@@ -53,9 +53,19 @@ def outcome_for(passed, action, is_council, date, today):
     if passed == 1:
         if not is_council:
             return (action or "Approved in committee"), "recommended"
-        if "emergency" in low:
-            return "Passed as emergency", "passed"
-        return ("Adopted" if "adopt" in low else "Passed"), "passed"
+        if FINAL_RX.search(action) or not action:
+            if "emergency" in low:
+                return "Passed as emergency", "passed"
+            return ("Adopted" if "adopt" in low else "Passed"), "passed"
+        # Legistar also sets its "passed" flag when a vote to file, hold or refer an item carries.
+        # That vote carried, but the legislation itself did not pass, so label it by what happened.
+        if "refer" in low:
+            return "Referred to committee", "referred"
+        if "hold" in low or "held" in low or "postpone" in low:
+            return ("Held" if "postpone" not in low else action), "held"
+        if "file" in low:
+            return ("Filed" if low == "filed" else action), "filed"
+        return action, "passed"   # e.g. "Approved", "Confirmed": a vote that carried, shown in its own words
     if passed == 0:
         return "Failed", "failed"
     if "recommend" in low or "approve" in low and not is_council:

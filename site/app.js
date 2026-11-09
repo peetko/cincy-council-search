@@ -351,7 +351,7 @@
     if (state.body === "@council") where.push("f.is_council = 1");
     else if (state.body === "@committees") where.push("f.is_council = 0");
     else if (state.body) { where.push("f.body_id = (SELECT id FROM body_names WHERE name = ?)"); args.push(state.body); }
-    if (state.sponsor) { where.push("(f.sponsors LIKE ? OR f.mover = ?)"); args.push("%" + state.sponsor + "%", state.sponsor); }
+    if (state.sponsor) { where.push("(('; ' || f.sponsors || ';') LIKE ? OR f.mover = ?)"); args.push("% " + state.sponsor + ";%", state.sponsor); }  // whole names: "Mann" isn't "Sundermann"
     if (state.dept) { where.push("f.dept_ids LIKE '%|' || (SELECT id FROM dept_names WHERE name = ?) || '|%'"); args.push(state.dept); }
     if (state.outcome) { where.push("f.outcome_cat = ?"); args.push(state.outcome); }
     if (state.topic) { where.push("f.topic_ids LIKE '%|' || (SELECT id FROM topic_names WHERE name = ?) || '|%'"); args.push(state.topic); }
@@ -359,7 +359,7 @@
     if (state.member) {
       const prof = stats && stats.profiles && stats.profiles[state.member];
       const last = prof ? prof.last_name : state.member.split(" ").pop();
-      where.push("f.is_council = 1 AND (f.sponsors LIKE ? OR f.mover = ?)"); args.push("%" + last + "%", state.member);
+      where.push("f.is_council = 1 AND (('; ' || f.sponsors || ';') LIKE ? OR f.mover = ?)"); args.push("% " + last + ";%", state.member);
     }
     if (state.vote === "@split") where.push("f.dissent <> ''");
     else if (state.vote) { where.push("f.dissent LIKE ?"); args.push("%" + state.vote + "|%"); }
@@ -817,13 +817,13 @@
   // ------------------------------------------------------------- rendering: stats
   function renderKpis() {
     $("kpi-h").textContent = `${stats.today.slice(0, 4)} so far`;
-    const TIPS = { "Ordinances passed": "kpi_ordinances", "Resolutions adopted": "kpi_resolutions", "Motions introduced": "kpi_motions",
+    const TIPS = { "Ordinances passed": "kpi_ordinances", "Resolutions adopted": "kpi_resolutions", "Motions before Council": "kpi_motions",
       "Meetings with minutes": "kpi_meetings", "Average members present": "kpi_present", "Unanimous final votes": "kpi_unanimous" };
     const y = stats.today.slice(0, 4);
     const ytd = { from: y + "-01-01", to: stats.today, label: `${y} so far` };
     const GO = { "Ordinances passed": { kind: "ordinance", body: "@council", outcome: "passed", ...ytd },
       "Resolutions adopted": { kind: "resolution", body: "@council", outcome: "passed", ...ytd },
-      "Motions introduced": { kind: "motion", body: "@council", ...ytd } };
+      "Motions before Council": { kind: "motion", body: "@council", ...ytd } };
     $("kpi-list").innerHTML = stats.kpis.map((k) => `<div class="card kpi${GO[k.label] ? " go" : ""}"${GO[k.label] ? ` data-go='${esc(JSON.stringify(GO[k.label]))}' title="Click to see them"` : ""}>
       <span class="l">${esc(k.label)}${TIPS[k.label] ? `<button type="button" class="tip" data-tip="${TIPS[k.label]}" aria-label="About ${esc(k.label.toLowerCase())}">i</button>` : ""}</span>
       <span class="v">${esc(k.value)}</span>

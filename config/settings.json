@@ -51,7 +51,7 @@
   "summary_kinds": ["ordinance", "resolution"],
   "summary_max_requests_per_run": 200,
   "summary_pause_seconds": 7,
-  "summary_max_input_chars": 30000,
+  "summary_max_input_chars": 60000,
 
   "_transcripts": "Meeting transcripts (closed captions CitiCable posts to archive.org): first date, minutes per daily run, and people whose names are never removed (besides Council members, who come from the database).",
   "transcripts_since": "2021-01-01",

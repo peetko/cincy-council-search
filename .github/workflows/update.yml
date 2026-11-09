@@ -71,8 +71,15 @@ jobs:
                 --limit 20 --json createdAt -q "[.[] | select(.createdAt >= \"$since\")] | length")
             done=$((done + ${n:-0}))
           done
+          # An update that is still running counts too: without this, a backup schedule that fires
+          # while the 3:37 am update is still working would queue a second full update behind it.
+          for st in in_progress queued waiting pending; do
+            n=$(gh run list -R "${{ github.repository }}" --workflow update.yml --status $st --limit 20 \
+                --json databaseId,createdAt -q "[.[] | select(.databaseId != ${{ github.run_id }} and .createdAt >= \"$since\")] | length")
+            done=$((done + ${n:-0}))
+          done
           if [ "$done" -gt 0 ]; then
-            echo "Today's update already ran; this backup run stops here."
+            echo "Today's update already ran (or is running now); this backup run stops here."
             echo "run=false" >> "$GITHUB_OUTPUT"
           else
             echo "No update yet today; running it now."
@@ -174,7 +181,8 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SITE_URL: ${{ env.SITE_URL }}
-        run: python scripts/alerts.py
+        # A mail problem (say, an expired app password) must never stop the data from being published.
+        run: python scripts/alerts.py || echo "::warning::The agenda alerts step failed; no alert emails went out this run. The rest of the update continues."
 
       - name: Split the database into pieces for the website
         run: |
@@ -204,9 +212,10 @@ jobs:
 
       # GitHub pauses scheduled workflows in public repos after 60 days without
       # a commit. This adds an empty commit every ~50 quiet days so the daily
-      # update keeps running. (Commits made here do not re-trigger any workflow.)
+      # update keeps running. (Commits made here do not re-trigger any workflow.) Runs on every
+      # update, however it was started, because the outside timer is now the usual trigger.
       - name: Keep the daily schedule alive
-        if: github.event_name == 'schedule'
+        if: github.ref == 'refs/heads/main'
         run: |
           days=$(( ( $(date +%s) - $(git log -1 --format=%ct) ) / 86400 ))
           if [ "$days" -ge 50 ]; then
