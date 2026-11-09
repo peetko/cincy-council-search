@@ -96,6 +96,7 @@ LAW BILL PLAN REPORT PROGRAM""".split())
 HONORIFICS = {"MR", "MS", "MRS", "MISS", "DR", "MX"}
 # Places and other proper words that are never a person's name on their own ("then Kroger...", "in Clifton").
 PLACE_WORDS = {w.upper().strip(".") for w in PROPER_WORDS} | {w.upper() for p in PROPER_PHRASES for w in p.split() if len(w) > 2}
+PHRASE_PAIRS = {(a.upper(), b.upper()) for p in PROPER_PHRASES for a, b in zip(p.split(), p.split()[1:])}
 STREET_WORDS = set("""STREET ST AVENUE AVE ROAD RD DRIVE DR BOULEVARD BLVD LANE LN COURT CT PLACE PL WAY TERRACE PIKE
 PARKWAY PKWY CIRCLE ALLEY""".split())
 _common = None
@@ -452,6 +453,8 @@ def find_names(words, officials, strong_only=False, lists=False, intros=False):
             nxt2 = core(words[i + 2]) if i + 2 < len(words) else ""
             if nxt in ORG_WORDS or nxt2 in ORG_WORDS:
                 continue
+            if (c, nxt) in PHRASE_PAIRS or (i > 0 and (core(words[i - 1]), c) in PHRASE_PAIRS):
+                continue      # "BRENT SPENCE", "MARTIN LUTHER KING": a bridge and a drive, not speakers
             if c in PLACE_WORDS and i > 0 and core(words[i - 1]) in ("IN", "OF", "FROM", "TO", "NEAR", "AROUND", "THROUGH"):
                 continue      # "I LIVE IN CLIFTON": the neighborhood, not someone called Clifton
             if c in names and not is_off(i):
