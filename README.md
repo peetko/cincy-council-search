@@ -96,6 +96,22 @@ Use `scripts/serve.py` rather than `python -m http.server`: the page reads the d
 - **This is not an official City record.** The Clerk of Council keeps the official minutes.
 - If a daily run fails (for example, Legistar is down), the site keeps serving the previous day's data and the next run catches up.
 
+## Checks before publishing
+
+`python tests/run_checks.py` runs before every data update and every publish. It uses made-up data
+(no network) to confirm that:
+
+- names of members of the public, house numbers, phone numbers and email addresses are removed from
+  sample public comment, and ordinary Council and staff talk is left alone;
+- only final-passage actions are labeled "Passed";
+- the AI-summary fact check catches a wrong dollar amount;
+- sponsor names are parsed cleanly and one member's count never includes another's.
+
+If a check fails, nothing is published and the current site stays up. When a name slips through on
+the site, add a case with the same pattern to `tests/redaction_cases.json` (use a made-up name, never
+the real one), fix the rule in `scripts/transcripts.py`, and raise `RULES_VERSION` in
+`scripts/collect_transcripts.py` so every meeting is processed again.
+
 ## Files
 
 ```
@@ -110,6 +126,8 @@ scripts/fetch_neighborhoods.py neighborhood boundaries for the map (OpenStreetMa
 scripts/serve.py               local preview server
 site/                          the website (index.html, styles.css, app.js, glossary.js, vendor/)
 tests/fake_legistar.py         a fake Legistar API used for testing
+tests/run_checks.py            checks that run before every publish (see below)
+tests/redaction_cases.json     made-up public comment samples for the name-removal rules
 ```
 
 Neighborhood boundaries come from the City/County GIS (CAGIS) map service, with any gaps filled from OpenStreetMap (© OpenStreetMap contributors, ODbL). They're fetched once by `scripts/fetch_neighborhoods.py`; delete `data/neighborhoods.geojson` from the site (or run it with `--refresh`) to update them.

@@ -116,6 +116,13 @@ jobs:
           key: captions-${{ github.run_id }}
           restore-keys: captions-
 
+      # Made-up test cases for name removal, outcome labels, the summary fact check and the statistics.
+      # If a rule was broken by a change, stop before any data is touched.
+      - name: Run the checks
+        run: |
+          pip install --quiet gender-guesser || echo "::warning::Couldn't install the first-name list; the name-removal checks will be skipped."
+          python tests/run_checks.py
+
       - name: Neighborhood map (saved copy, or fetched from OpenStreetMap)
         run: python scripts/fetch_neighborhoods.py
 
@@ -188,8 +195,11 @@ jobs:
         run: |
           python scripts/split_db.py --also site/data/council.db.prev
           python scripts/split_db.py --db site/data/docs.db --out docs --info docs-info.json --also site/data/docs.db.prev
+          # When the name-removal rules changed this run, the previous transcripts were made with the
+          # old rules, so that older copy is not published beside the new one.
+          if [ -f site/data/transcripts.db.rules-changed ]; then rm -f site/data/transcripts.db.prev; fi
           python scripts/split_db.py --db site/data/transcripts.db --out transcripts --info transcripts-info.json --also site/data/transcripts.db.prev
-          rm -f site/data/docs.db site/data/transcripts.db site/data/*.prev   # published only in pieces
+          rm -f site/data/docs.db site/data/transcripts.db site/data/*.prev site/data/*.rules-changed   # published only in pieces
 
       # Safety net: if the page's files are broken, missing or cut off, stop here so the
       # broken data is never saved or published.
@@ -202,7 +212,7 @@ jobs:
         with:
           name: site-data
           path: site/data
-          retention-days: 90
+          retention-days: 30   # older saved copies aren't needed, and shouldn't outlive a privacy fix for long
           compression-level: 1
 
       - name: Publish the site with the new data
