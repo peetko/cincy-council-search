@@ -38,7 +38,7 @@ CACHE = os.environ.get("CAPTION_CACHE", os.path.join(ROOT, ".cache", "captions")
 SINCE = SETTINGS.get("transcripts_since", "2021-01-01")
 USER_AGENT = "JunctaLucent/1.0 (independent council-records search; github.com/peetko/cincy-council-search)"
 # Bump when transcripts.py's rules change: every meeting is processed again (from the cache).
-RULES_VERSION = "2"
+RULES_VERSION = "3"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -238,6 +238,10 @@ def main():
             else:
                 con.execute("UPDATE tmeetings SET status = 'error' WHERE item = ?", (r["item"],))  # fetch again
         print(f"Transcript rules changed: re-processed {n} meetings from the cache ({len(redo) - n} to download again).")
+        # The copy from before this run was made with the old name-removal rules. Leave a note so the
+        # workflow doesn't publish that older copy beside the new one tonight.
+        with open(out_path + ".rules-changed", "w") as f:
+            f.write(RULES_VERSION)
     con.execute("INSERT OR REPLACE INTO meta VALUES ('rules_version', ?)", (RULES_VERSION,))
     con.commit()
 

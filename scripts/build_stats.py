@@ -74,7 +74,7 @@ def vote_summary(con, a, b):
     rows = con.execute("""
         SELECT i.item_id,
                SUM(v.value IN ('yes','no','abstain','remote')) AS present,
-               SUM(v.value = 'no') AS nos,
+               SUM(v.value IN ('no', 'abstain')) AS nos,
                COUNT(v.person) AS n
         FROM items i JOIN votes v ON v.item_id = i.item_id
         WHERE i.is_final = 1 AND i.date BETWEEN ? AND ?
@@ -108,7 +108,7 @@ def kpis(con, sp):
 
     counted("Ordinances passed", distinct_passed(con, "ordinance", a, b), distinct_passed(con, "ordinance", pa, pb))
     counted("Resolutions adopted", distinct_passed(con, "resolution", a, b), distinct_passed(con, "resolution", pa, pb))
-    counted("Motions introduced", motions(con, a, b), motions(con, pa, pb))
+    counted("Motions before Council", motions(con, a, b), motions(con, pa, pb))
     c, k = meetings_with_minutes(con, a, b)
     out.append({"label": "Meetings with minutes", "value": f"{c + k:,}", "arrow": "",
                 "delta": f"Council {c} · committees {k}"})
@@ -231,9 +231,11 @@ def member_profiles(con, today):
     for person, rows in people.items():
         dates = sorted(r["date"] for r in rows)
         last = last_name(person)
+        # A sponsor list looks like "Owens; Walsh". Match the last name as a whole word at the end of
+        # an entry, so "Mann" doesn't also pick up "Sundermann".
         sponsored = con.execute("""
             SELECT kind, outcome_cat, topics, matter_id, item_id, date FROM items
-            WHERE is_council = 1 AND (sponsors LIKE ? OR mover = ?)""", (f"%{last}%", person)).fetchall()
+            WHERE is_council = 1 AND (('; ' || sponsors || ';') LIKE ? OR mover = ?)""", (f"% {last};%", person)).fetchall()
         seen, kinds, kinds_ytd, passed, topics = set(), collections.Counter(), collections.Counter(), 0, collections.Counter()
         for r in sponsored:
             key = r["matter_id"] or -r["item_id"]

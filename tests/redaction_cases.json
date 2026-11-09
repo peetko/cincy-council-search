@@ -1,0 +1,201 @@
+{
+ "_help": "Checks for the transcript name-removal rules (scripts/transcripts.py). Each case is a few caption lines (>> starts a new speaker, as in the real captions) plus words that must NOT appear in the result ('gone') and words that must still appear ('kept'). All names here are made up. When a name slips through on the site, add a case with the same pattern (never the real name) and fix the rule until it passes. Run: python tests/run_checks.py",
+ "officials": [
+  "Meeka Owens",
+  "Jan-Michele Kearney",
+  "Mark Jeffreys",
+  "Aftab Pureval",
+  "Sheryl Long"
+ ],
+ "cases": [
+  {
+   "name": "basic introductions and calls",
+   "lines": [
+    ">> Vice Mayor Kearney: WE WILL NOW MOVE TO PUBLIC COMMENT. EACH SPEAKER HAS TWO MINUTES.",
+    ">> Vice Mayor Kearney: OUR FIRST SPEAKER IS JOHN SMITH, FOLLOWED BY MARY WILLIAMS.",
+    ">> GOOD AFTERNOON. MY NAME IS JOHN SMITH AND I LIVE IN NORTHSIDE.",
+    ">> Vice Mayor Kearney: THANK YOU, MR. SMITH."
+   ],
+   "gone": [
+    "john",
+    "smith",
+    "mary",
+    "williams"
+   ],
+   "kept": [
+    "Northside",
+    "Kearney",
+    "[name]"
+   ]
+  },
+  {
+   "name": "surname spelled out with hyphens",
+   "lines": [
+    ">> Vice Mayor Kearney: WE WILL NOW MOVE TO PUBLIC COMMENT. EACH SPEAKER HAS TWO MINUTES.",
+    ">> MY NAME IS DANA KOWALCZYK, K-O-W-A-L-C-Z-Y-K, AND I AM HERE ABOUT THE BUDGET."
+   ],
+   "gone": [
+    "dana",
+    "kowalczyk",
+    "k-o-w"
+   ],
+   "kept": [
+    "budget"
+   ]
+  },
+  {
+   "name": "surname spelled out letter by letter",
+   "lines": [
+    ">> Vice Mayor Kearney: WE WILL NOW MOVE TO PUBLIC COMMENT. EACH SPEAKER HAS TWO MINUTES.",
+    ">> MY NAME IS DANA KOWALCZYK. K O W A L C Z Y K. I AM HERE ABOUT THE BUDGET."
+   ],
+   "gone": [
+    "kowalczyk",
+    "k o w a"
+   ],
+   "kept": [
+    "budget"
+   ]
+  },
+  {
+   "name": "less common names in the chair's list",
+   "lines": [
+    ">> Vice Mayor Kearney: WE WILL NOW MOVE TO PUBLIC COMMENT. EACH SPEAKER HAS TWO MINUTES.",
+    ">> Vice Mayor Kearney: NEXT WE HAVE LAKEISHA OKONKWO, THEN NGUYEN THI HUONG, THEN DESHAWN MBEKI, AND THEN XIOMARA QUISPE."
+   ],
+   "gone": [
+    "lakeisha",
+    "okonkwo",
+    "nguyen",
+    "huong",
+    "deshawn",
+    "mbeki",
+    "xiomara",
+    "quispe"
+   ],
+   "kept": []
+  },
+  {
+   "name": "speaker cards read as a list",
+   "lines": [
+    ">> Vice Mayor Kearney: WE WILL NOW MOVE TO PUBLIC COMMENT. EACH SPEAKER HAS TWO MINUTES.",
+    ">> Vice Mayor Kearney: WE HAVE SPEAKER CARDS FROM TAMIKA JEFFERSON-BELL, RAJESH PATEL, AND SIOBHAN O'MALLEY."
+   ],
+   "gone": [
+    "tamika",
+    "jefferson",
+    "rajesh",
+    "patel",
+    "siobhan",
+    "malley"
+   ],
+   "kept": [
+    "speaker cards"
+   ]
+  },
+  {
+   "name": "address, phone and email",
+   "lines": [
+    ">> Vice Mayor Kearney: WE WILL NOW MOVE TO PUBLIC COMMENT. EACH SPEAKER HAS TWO MINUTES.",
+    ">> MY NAME IS JOHN SMITH AND I LIVE AT 1234 ELM STREET. MY PHONE NUMBER IS 513-555-0142 AND MY EMAIL IS JSMITH@EXAMPLE.COM. IN 2024 THE STREET FLOODED."
+   ],
+   "gone": [
+    "1234",
+    "555",
+    "example.com"
+   ],
+   "kept": [
+    "elm street",
+    "2024",
+    "[number]",
+    "[phone]",
+    "[email]"
+   ]
+  },
+  {
+   "name": "relatives and others named by a commenter",
+   "lines": [
+    ">> Vice Mayor Kearney: WE WILL NOW MOVE TO PUBLIC COMMENT. EACH SPEAKER HAS TWO MINUTES.",
+    ">> MY NAME IS CAROL REYES. MY SON MIGUEL REYES WAS HURT ON LINN STREET AND OFFICER BRADLEY KOSTER NEVER CALLED ME BACK."
+   ],
+   "gone": [
+    "carol",
+    "reyes",
+    "miguel",
+    "bradley",
+    "koster"
+   ],
+   "kept": [
+    "Linn street"
+   ]
+  },
+  {
+   "name": "residents speaking during an agenda item",
+   "lines": [
+    ">> Councilmember Owens: LET'S TURN TO ITEM FOUR. WE HAVE SOME RESIDENTS HERE TO TALK ABOUT IT.",
+    ">> THANKS. I'M PRIYA RAMASWAMY AND I OWN THE BAKERY ON HAMILTON AVENUE.",
+    ">> AND I AM HER NEIGHBOR, TODD FENWICK. WE LIVE AT 4410 HAMILTON AVENUE."
+   ],
+   "gone": [
+    "priya",
+    "ramaswamy",
+    "todd",
+    "fenwick",
+    "4410"
+   ],
+   "kept": [
+    "Hamilton avenue",
+    "Owens",
+    "bakery"
+   ]
+  },
+  {
+   "name": "a neighborhood is not a first name",
+   "lines": [
+    ">> Vice Mayor Kearney: WE WILL NOW MOVE TO PUBLIC COMMENT. EACH SPEAKER HAS TWO MINUTES.",
+    ">> GOOD AFTERNOON. I LIVE IN CLIFTON AND I WALK TO WORK."
+   ],
+   "gone": [
+    "[name]"
+   ],
+   "kept": [
+    "Clifton"
+   ]
+  },
+  {
+   "name": "ordinary Council and staff talk is left alone",
+   "lines": [
+    ">> Councilmember Owens: THANK YOU, CHAIR. I'M CAUTIOUSLY OPTIMISTIC ABOUT THIS ORDINANCE. WE HAVE KROGER, THEN 3CDC, THEN THE PORT COMING TO PRESENT.",
+    ">> I'M GOING TO WALK THROUGH THE BUDGET. WE HAVE 14 POSITIONS, THEN OVERTIME, THEN FLEET. OUR OFFICE IS AT 801 PLUM STREET. CALL 513-591-6000 FOR SERVICE.",
+    ">> Councilmember Jeffreys: I AM DEEPLY GRATEFUL TO VICE MAYOR KEARNEY AND TO CITY MANAGER SHERYL LONG."
+   ],
+   "gone": [
+    "[name]",
+    "[number]",
+    "[phone]"
+   ],
+   "kept": [
+    "Kroger",
+    "3CDC",
+    "801",
+    "513-591-6000",
+    "Kearney",
+    "Sheryl Long"
+   ]
+  },
+  {
+   "name": "the chair's own remarks during public comment",
+   "lines": [
+    ">> Mayor Pureval: WE WILL NOW MOVE TO PUBLIC COMMENT. EACH SPEAKER HAS TWO MINUTES. WE HAVE SEVERAL SPEAKERS TODAY, THEN WE WILL TAKE UP THE AGENDA. COUNCILMEMBER JEFFREYS, THEN VICE MAYOR KEARNEY."
+   ],
+   "gone": [
+    "[name]"
+   ],
+   "kept": [
+    "Jeffreys",
+    "Kearney",
+    "several speakers"
+   ]
+  }
+ ]
+}

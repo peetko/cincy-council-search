@@ -31,6 +31,13 @@ jobs:
         with:
           python-version: "3.12"
 
+      # Made-up test cases for name removal, outcome labels, the summary fact check and the statistics.
+      # If a code change broke one of these rules, the site isn't published and the current version stays up.
+      - name: Run the checks
+        run: |
+          pip install --quiet gender-guesser || echo "::warning::Couldn't install the first-name list; the name-removal checks will be skipped."
+          python tests/run_checks.py
+
       - name: Set up GitHub Pages
         id: pages
         uses: actions/configure-pages@v5

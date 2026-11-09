@@ -146,6 +146,11 @@ def main():
     if not outgoing:
         print("No matches today.")
         return
+    if dry and not args.dry_run:
+        # GitHub's run logs are public; the watch list is private. Say how many, nothing more.
+        print(f"{len(outgoing)} alert email(s) matched but were not sent. "
+              "Run with --dry-run on your own computer to see them.")
+        return
     if dry:
         for m in outgoing:
             print("-" * 60)

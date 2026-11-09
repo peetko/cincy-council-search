@@ -46,10 +46,10 @@ window.GLOSSARY = {
   // ---- stats
   kpi_ordinances: ["Ordinances passed", "Distinct ordinances (local laws) passed at full Council so far this year, compared with the same days last year. Most need 5 of 9 votes; many pass “as an emergency” so they take effect right away."],
   kpi_resolutions: ["Resolutions adopted", "Statements of Council's position adopted so far this year, such as recognitions and stances on state or federal issues. Simple resolutions aren't legally binding."],
-  kpi_motions: ["Motions introduced", "Requests or directions to the City administration put before full Council so far this year. A motion often leads to a report or to an ordinance drafted by the Law Department."],
+  kpi_motions: ["Motions before Council", "Requests or directions to the City administration put before full Council so far this year. A motion often leads to a report or to an ordinance drafted by the Law Department."],
   kpi_meetings: ["Meetings with minutes", "Full Council and committee meetings this year whose minutes have been published on Legistar."],
   kpi_present: ["Average members present", "On each final-passage vote, how many of the 9 members took part (voted yes, no or abstain, or joined remotely), averaged over the year. Excused absences count as absent."],
-  kpi_unanimous: ["Unanimous final votes", "Share of final-passage votes with no “no” votes. Council usually votes together; click to see the split votes."],
+  kpi_unanimous: ["Unanimous final votes", "Share of final-passage votes where nobody voted no or abstained. Council usually votes together; click to see the split votes."],
   chart_monthly: ["Ordinances per month", "Distinct ordinances passed at full Council each month, this year against last year. The current month counts only the days so far, compared with the same days a year ago."],
   no_votes_month: ["No votes this month", "Full Council passed no ordinances this month in either year. Council usually takes a summer break in July after passing the City budget in June, which is why June is so busy."],
   chart_topics: ["Topics", "Items are tagged with topics by keyword (for example, “streetcar” means Transit & streets). Each piece of legislation counts once even if it appears at several meetings. Compared with the same days a year earlier."],

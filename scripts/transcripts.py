@@ -18,6 +18,8 @@ import os
 import re
 
 NAME_MARK = "[name]"
+NUMBER_MARK, PHONE_MARK, EMAIL_MARK = "[number]", "[phone]", "[email]"
+MARKS = (NAME_MARK, NUMBER_MARK, PHONE_MARK, EMAIL_MARK)
 
 # ------------------------------------------------------------------ word lists
 
@@ -92,6 +94,10 @@ COMMONS VILLAGE HEIGHTS HILL HILLS TOWNSHIP COUNTY CITY CORPORATION CORP INC LLC
 COUNCIL COMMITTEE PROJECT FUND TRUST MINISTRIES PARTNERS PARTNERSHIP PLAZA TOWER BUILDING THEATER THEATRE AWARD ACT
 LAW BILL PLAN REPORT PROGRAM""".split())
 HONORIFICS = {"MR", "MS", "MRS", "MISS", "DR", "MX"}
+# Places and other proper words that are never a person's name on their own ("then Kroger...", "in Clifton").
+PLACE_WORDS = {w.upper().strip(".") for w in PROPER_WORDS} | {w.upper() for p in PROPER_PHRASES for w in p.split() if len(w) > 2}
+STREET_WORDS = set("""STREET ST AVENUE AVE ROAD RD DRIVE DR BOULEVARD BLVD LANE LN COURT CT PLACE PL WAY TERRACE PIKE
+PARKWAY PKWY CIRCLE ALLEY""".split())
 _common = None
 
 
@@ -351,8 +357,16 @@ def _offsets(words):
     return offs
 
 
-def find_names(words, officials, strong_only=False):
-    """Indexes of words in this turn that are a person's name. words are the turn's raw (upper-case) words."""
+# The chair or clerk reading out who signed up: "we have Jane Doe, John Roe, and then Sam Poe".
+LIST_TRIGGERS = re.compile(r"\b(?:WE HAVE|WE'VE GOT|I HAVE|(?:SPEAKER )?CARDS? (?:FROM|FOR)|(?:AND )?THEN|HEAR FROM|"
+                           r"SIGNED UP(?: TO SPEAK)?(?: (?:IS|ARE))?|NEXT (?:IS|UP IS|WE HAVE))\s")
+INTRO_RX = re.compile(r"(?:^|[.,!?] |\bAND )(?:I'M|I AM)\s")
+
+
+def find_names(words, officials, strong_only=False, lists=False, intros=False):
+    """Indexes of words in this turn that are a person's name. words are the turn's raw (upper-case) words.
+    lists: the turn is someone calling speakers, so names read out in a list are found too.
+    intros: also find an "I'm Jane Doe" at the very start of the turn (used outside public comment)."""
     text = " ".join(words).upper()
     offs = _offsets(words)
     idx_at = {o: i for i, o in enumerate(offs)}
@@ -366,7 +380,8 @@ def find_names(words, officials, strong_only=False):
 
     def take_after(i, n, strict=False):
         got = 0
-        if strict and i < len(words) and core(words[i]) in common and core(words[i]) not in first_names():
+        if strict and i < len(words) and ((core(words[i]) in common and core(words[i]) not in first_names())
+                                          or core(words[i]) in PLACE_WORDS or core(words[i]) in ACRONYMS):
             return
         while i < len(words) and got < n:
             c = core(words[i])
@@ -407,6 +422,23 @@ def find_names(words, officials, strong_only=False):
             hits.add(i)
             got += 1
             i -= 1
+    if intros and strong_only:
+        # Outside public comment: "I'M PRIYA RAO AND I OWN..." in the first few words of a turn, where the
+        # next two words are both unusual (so "I'M REALLY GLAD" and "I'M CONCERNED ABOUT" are left alone).
+        for m in INTRO_RX.finditer(text):
+            i = idx_at.get(m.end())
+            if i is None or i > 8 or i + 1 >= len(words):
+                continue
+            a, b = core(words[i]), core(words[i + 1])
+            ok = lambda c, k: c and len(c) > 1 and c not in FUNCTION and c not in PLACE_WORDS and not is_off(k) \
+                and (c in first_names() or c not in common)
+            if ok(a, i) and (ends_phrase(words[i]) and a in first_names() or ok(b, i + 1)):
+                take_after(i, 3)
+    if lists:
+        for m in LIST_TRIGGERS.finditer(text + " "):
+            i = idx_at.get(m.end())
+            if i is not None:
+                take_after(i, 3, True)
     if not strong_only:
         # "I'M CLAIRA MARTIN, ...": a self-introduction with a word that isn't an everyday word
         for m in re.finditer(r"(?:^|[.,!?] |\bAND )(?:I'M|I AM|THIS IS)\s", text):
@@ -420,6 +452,8 @@ def find_names(words, officials, strong_only=False):
             nxt2 = core(words[i + 2]) if i + 2 < len(words) else ""
             if nxt in ORG_WORDS or nxt2 in ORG_WORDS:
                 continue
+            if c in PLACE_WORDS and i > 0 and core(words[i - 1]) in ("IN", "OF", "FROM", "TO", "NEAR", "AROUND", "THROUGH"):
+                continue      # "I LIVE IN CLIFTON": the neighborhood, not someone called Clifton
             if c in names and not is_off(i):
                 hits.add(i)
                 if not ends_phrase(w) and i + 1 < len(words):
@@ -427,12 +461,74 @@ def find_names(words, officials, strong_only=False):
                     if (c2 and c2 not in FUNCTION and not is_off(i + 1) and len(c2) > 1 and not re.search(r"\d", words[i + 1])
                             and (c2 not in common or ends_phrase(words[i + 1]))):
                         hits.add(i + 1)
+    if lists:
+        # A name that ends with a comma is followed by the next name on the list: "JANE DOE, RAJ PATEL, AND SAM POE."
+        grew = True
+        while grew:
+            before = len(hits)
+            for i in sorted(hits):
+                if words[i].endswith(",") and i + 1 < len(words) and i + 1 not in hits:
+                    j = i + 1
+                    while j < len(words) and core(words[j]) in ("AND", "THEN") and not ends_phrase(words[j]):
+                        j += 1
+                    if j not in hits:
+                        take_after(j, 3, True)
+            grew = len(hits) > before
     return hits
+
+
+def spelled_names(words):
+    """Indexes of a name spelled out letter by letter ("K-O-W-A-L-S-K-I", or "K O W A L S K I"), and the name."""
+    idx, names = set(), set()
+    run = []
+    for i, w in enumerate(list(words) + [""]):
+        c = core(w)
+        if re.fullmatch(r"[A-Z](?:-[A-Z]){2,}", c):
+            idx.add(i)
+            names.add(c.replace("-", ""))
+        if len(c) == 1 and re.fullmatch(r"[A-Z][,.]?", w.upper()):
+            run.append(i)
+            continue
+        if len(run) >= 4:
+            idx.update(run)
+            names.add("".join(core(words[k]) for k in run))
+        run = []
+    return idx, names
+
+
+PHONE_RX = re.compile(r"^\(?\d{3}\)?[-.]?\d{3}[-.]\d{4}$|^\d{3}[-.]\d{4}$")
+
+
+def personal_details(words):
+    """{index: mark} for house numbers, phone numbers and email addresses a member of the public gave.
+    The street name stays ("I live on [number] Elm Street"), so streets can still be searched. None = drop the word."""
+    out = {}
+    bare = [re.sub(r"^[^\w(]+|[^\w)]+$", "", w) for w in words]
+    for i, b in enumerate(bare):
+        if "@" in b and "." in b:
+            out[i] = EMAIL_MARK
+        elif PHONE_RX.match(b):
+            out[i] = PHONE_MARK
+        elif (re.fullmatch(r"\(?\d{3}\)?", b) and i + 2 < len(bare) and re.fullmatch(r"\d{3}", bare[i + 1])
+              and re.fullmatch(r"\d{4}", bare[i + 2])):
+            out[i], out[i + 1], out[i + 2] = PHONE_MARK, None, None      # "513 555 0142"
+        elif re.fullmatch(r"\d{1,5}", b) and i not in out and not ends_phrase(words[i]):
+            for j in range(i + 1, min(i + 5, len(words))):      # "1234 ELM STREET", "12 EAST MCMICKEN AVENUE"
+                c = core(words[j])
+                if c in STREET_WORDS and j > i + 1:
+                    out[i] = NUMBER_MARK
+                    break
+                if not c or c in FUNCTION or re.search(r"\d", words[j]) or ends_phrase(words[j]):
+                    break
+    return out
 
 
 # The chair calling up speakers, even where public comment wasn't recognized as such.
 SPEAKER_CALL = re.compile(r"FLOOR IS YOURS|PRIVILEGE OF THE FLOOR|YOU HAVE (?:TWO|THREE|ONE|[123]) MINUTES|NEXT SPEAKER|"
-                          r"LAST SPEAKER|FIRST SPEAKER|FOLLOWED BY|ON DECK|COME (?:ON )?UP|SIGNED UP TO SPEAK")
+                          r"LAST SPEAKER|FIRST SPEAKER|FOLLOWED BY|ON DECK|COME (?:ON )?UP|SIGNED UP TO SPEAK|SPEAKER CARDS?")
+# A resident speaking about their own life outside the public comment part of a meeting.
+RESIDENT_CONTEXT = re.compile(r"\b(?:I|WE) (?:LIVE|LIVED|OWN|RENT)\b|\bI'VE LIVED\b|\bRESIDENT OF\b|\bHOMEOWNER\b|\bMY NEIGHBORS?\b|"
+                              r"\bHER NEIGHBOR\b|\bHIS NEIGHBOR\b|\bMY (?:SON|DAUGHTER|HUSBAND|WIFE|MOTHER|FATHER|MOM|DAD|KIDS|CHILDREN|GRANDSON|GRANDDAUGHTER)\b")
 
 
 def redact(tlist, officials):
@@ -440,17 +536,34 @@ def redact(tlist, officials):
     found = set()
     for t in tlist:
         words = [w for w, _ in t["tokens"]]
-        if t.get("pc") or SPEAKER_CALL.search(" ".join(words).upper()):
-            hits = find_names(words, officials)
+        text = " ".join(words).upper()
+        calling = bool(SPEAKER_CALL.search(text))
+        personal = bool(t.get("pc")) and not COUNCIL_LABEL.search(t["label"] or "")
+        if t.get("pc") or calling:
+            # Names read out in a list are looked for where someone is calling speakers: the chair, or an
+            # unlabeled clerk, during public comment.
+            hits = find_names(words, officials, lists=calling or bool(COUNCIL_LABEL.search(t["label"] or "")))
         elif not t["label"]:
-            # Outside public comment, only clear self-introductions by people who aren't City staff.
-            text = " ".join(words).upper()
+            # Outside public comment: residents talking about their own lives, and clear self-introductions
+            # by people who aren't City staff.
             hits = set()
+            staff = STAFF_CONTEXT.search(text)
             m = re.search(r"\bMY NAME", text)
-            if m and not STAFF_CONTEXT.search(" ".join(text[m.start():].split()[:18])):
+            if RESIDENT_CONTEXT.search(text) and not staff:
+                hits = find_names(words, officials)
+                personal = True
+            elif m and not STAFF_CONTEXT.search(" ".join(text[m.start():].split()[:18])):
                 hits = find_names(words, officials, strong_only=True)
+            elif INTRO_RX.search(text) and not STAFF_CONTEXT.search(" ".join(text.split()[:26])):
+                hits = find_names(words, officials, strong_only=True, intros=True)
         else:
             hits = set()
+        if hits or t.get("pc"):
+            sp, spelled = spelled_names(words)
+            hits |= sp
+            found |= spelled
+        # House numbers, phone numbers and email addresses given by members of the public.
+        t["masked"] = {i: m for i, m in personal_details(words).items() if i not in hits} if personal else {}
         t["hits"] = hits
         for i in hits:
             found.add(core(words[i]))
@@ -521,7 +634,8 @@ class Caser:
 
     def __call__(self, words):
         """words: upper-case words (and [name] marks). Returns display words."""
-        out = [self.word(w) if w != NAME_MARK else w for w in words]
+        is_mark = lambda w: w.startswith(MARKS)
+        out = [self.word(w) if not is_mark(w) else w for w in words]
         lows = [re.sub(r"[^a-z0-9'\-]", "", w.lower()) for w in words]
         i = 0
         while i < len(out):
@@ -536,8 +650,8 @@ class Caser:
         start = True
         prev = ""
         for i, w in enumerate(out):
-            if w == NAME_MARK:
-                start, prev = False, w
+            if is_mark(w):
+                start, prev = bool(re.search(r"[.?!]$", w)), w   # "[name]." ends a sentence
                 continue
             cap_next = prev.upper().rstrip(",") in CAPITALIZE_AFTER and core(w) not in FUNCTION
             month = re.fullmatch(r"(?:may|march)", w.lower()) and i + 1 < len(out) and re.match(r"\d", out[i + 1])
@@ -554,9 +668,14 @@ def passages(tlist, caser, target=55, most=110):
     """Cut turns into passages: [{"t": seconds, "label": str, "pc": 0/1, "text": str}, ...]"""
     out = []
     for t in tlist:
-        words, times, red = [], [], t.get("redacted", set())
+        words, times, red, masked = [], [], t.get("redacted", set()), t.get("masked", {})
         for i, (w, s) in enumerate(t["tokens"]):
-            if i in red:
+            if i in masked and i not in red:
+                if masked[i] is None:
+                    continue
+                tail = re.search(r"[,.;:?!]+$", w)
+                w = masked[i] + (tail.group(0) if tail else "")
+            elif i in red:
                 tail = re.search(r"[,.;:?!]+$", w)
                 if words and words[-1].startswith(NAME_MARK):
                     words[-1] = NAME_MARK + (tail.group(0) if tail else "")
@@ -564,8 +683,7 @@ def passages(tlist, caser, target=55, most=110):
                 w = NAME_MARK + (tail.group(0) if tail else "")
             words.append(w)
             times.append(s)
-        shown = caser([w if not w.startswith(NAME_MARK) else NAME_MARK for w in words])
-        shown = [s if not w.startswith(NAME_MARK) else w for s, w in zip(shown, words)]
+        shown = caser(words)
         chunk, t0 = [], None
         for w, s in zip(shown, times):
             if not chunk:

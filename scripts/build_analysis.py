@@ -66,7 +66,8 @@ def timing(con, today):
     stuck = []
     for mid, steps in hist.items():
         first = steps[0]
-        final = next((s for s in steps if s["is_final"] and s["passed"] is not None), None)
+        final = next((s for s in steps if s["is_final"] and s["passed"] == 1), None)
+        decided = any(s["is_final"] and s["passed"] is not None for s in steps)
         if final and first["date"] >= TIMING_FROM:
             d = days(first["date"], final["date"])
             by_kind[final["kind"]].append(d)
@@ -75,7 +76,7 @@ def timing(con, today):
             if committee:
                 by_committee[committee].append(d)
         # Stuck: last step was a referral (or a committee hold), nothing decided, and it's been a while.
-        if final or first["kind"] not in ("ordinance", "resolution", "motion"):
+        if decided or first["kind"] not in ("ordinance", "resolution", "motion"):
             continue
         last = steps[-1]
         if any(s["outcome_cat"] in ("filed", "failed", "passed") for s in steps):
