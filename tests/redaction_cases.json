@@ -196,6 +196,22 @@
     "Kearney",
     "several speakers"
    ]
+  },
+  {
+   "name": "bridges and streets named after people",
+   "lines": [
+    ">> Vice Mayor Kearney: WE WILL NOW MOVE TO PUBLIC COMMENT. EACH SPEAKER HAS TWO MINUTES.",
+    ">> I DRIVE THE BRENT SPENCE BRIDGE EVERY DAY AND I LIVE OFF MARTIN LUTHER KING DRIVE. I OWN PROPERTY AT 1734 EXAMPLE STREET."
+   ],
+   "gone": [
+    "[name]",
+    "1734"
+   ],
+   "kept": [
+    "Brent Spence",
+    "Martin Luther King",
+    "example street"
+   ]
   }
  ]
 }

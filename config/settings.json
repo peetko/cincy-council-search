@@ -14,9 +14,9 @@
   "_vote_bodies": "Roll-call votes are only downloaded for these bodies (keeps the job fast).",
   "vote_bodies_regex": "^(cincinnati )?city council$",
 
-  "_final_passage": "Which actions count as a final vote. Cincinnati uses 'Passed', 'Passed Emergency' (passed with an emergency clause) and 'Adopted'. Separate votes like 'Suspension of the three readings' and 'Emergency clause to remain' are excluded.",
+  "_final_passage": "Which actions count as a final vote. Cincinnati uses 'Passed', 'Passed Emergency' (passed with an emergency clause) and 'Adopted'. Separate votes like 'Suspension of the three readings', 'Emergency clause to remain' and 'Immediate Consideration' are procedural and excluded.",
   "final_passage_regex": "^(passed|passed emergency|adopted)$",
-  "not_final_regex": "suspen|reading|clause|amend",
+  "not_final_regex": "suspen|reading|clause|amend|consider",
 
   "_vote_values": "How Legistar vote words map to yes / no / absent / abstain / remote. 'remote' (taking part remotely, with no yes or no recorded) counts as present. Anything unlisted counts as 'other' (treated as absent).",
   "vote_values": {
