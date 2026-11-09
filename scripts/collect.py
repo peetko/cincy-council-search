@@ -50,6 +50,20 @@ def outcome_for(passed, action, is_council, date, today):
         nice = {"suspension of the three readings": "Three readings suspended",
                 "emergency clause to remain": "Emergency clause kept"}.get(low, action)
         return (nice if passed == 1 else f"{nice} (failed)"), "procedural"
+    if passed is not None and is_council and action and not FINAL_RX.search(action):
+        # A roll call on something other than final passage. Legistar's passed flag says whether that
+        # vote carried, not whether the legislation passed, so label it by what happened.
+        if "fail" in low or "disapprov" in low:
+            return action, "failed"            # "Failed of Adoption" (even on a 4-3 vote: adoption takes 5)
+        if passed == 0:
+            return f"{action} (failed)", "procedural"   # a motion to hold or refer that lost; the item goes on
+        if "refer" in low:
+            return "Referred to committee", "referred"
+        if "hold" in low or "held" in low or "postpone" in low:
+            return ("Held" if "postpone" not in low else action), "held"
+        if "file" in low:
+            return ("Filed" if low == "filed" else action), "filed"
+        return action, "passed"   # e.g. "Confirmed" (appointments), "Approved": shown in its own words
     if passed == 1:
         if not is_council:
             return (action or "Approved in committee"), "recommended"
@@ -57,15 +71,7 @@ def outcome_for(passed, action, is_council, date, today):
             if "emergency" in low:
                 return "Passed as emergency", "passed"
             return ("Adopted" if "adopt" in low else "Passed"), "passed"
-        # Legistar also sets its "passed" flag when a vote to file, hold or refer an item carries.
-        # That vote carried, but the legislation itself did not pass, so label it by what happened.
-        if "refer" in low:
-            return "Referred to committee", "referred"
-        if "hold" in low or "held" in low or "postpone" in low:
-            return ("Held" if "postpone" not in low else action), "held"
-        if "file" in low:
-            return ("Filed" if low == "filed" else action), "filed"
-        return action, "passed"   # e.g. "Approved", "Confirmed": a vote that carried, shown in its own words
+        return action, "passed"
     if passed == 0:
         return "Failed", "failed"
     if "recommend" in low or "approve" in low and not is_council:

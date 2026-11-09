@@ -62,7 +62,8 @@ else:
 # ---- 2. outcome labels (full Council, Legistar's passed flag set)
 EXPECT = {"Passed": "passed", "Passed Emergency": "passed", "Adopted": "passed", "Filed": "filed", "Held": "held",
           "Referred to Budget and Finance Committee": "referred", "Indefinitely Postponed": "held",
-          "Approved & Filed": "filed", "Emergency clause to remain": "procedural",
+          "Approved & Filed": "filed", "Emergency clause to remain": "procedural", "Immediate Consideration": "procedural",
+          "Failed of Adoption": "failed", "Confirmed": "passed", "Motion to Refer back to Committee": "referred",
           "Suspension of the three readings": "procedural"}
 for action, want in EXPECT.items():
     label, cat = collect.outcome_for(1, action, 1, "2025-01-01", "2026-01-01")
@@ -70,6 +71,8 @@ for action, want in EXPECT.items():
     if want != "passed":
         check(not label.startswith("Passed"), f"outcome / {action}", f"labeled “{label}”")
 check(collect.outcome_for(0, "Passed", 1, "2025-01-01", "2026-01-01")[1] == "failed", "outcome / a failed final vote")
+check(collect.outcome_for(0, "Held", 1, "2025-01-01", "2026-01-01")[1] == "procedural", "outcome / a lost motion to hold is not a failed item")
+check(collect.outcome_for(0, "Failed of Adoption", 1, "2025-01-01", "2026-01-01")[1] == "failed", "outcome / failed of adoption")
 
 # ---- 3. summary number check
 TEXT = ("AUTHORIZING the City Manager to accept and appropriate a grant of $250,000.00 from the Ohio Department of "
