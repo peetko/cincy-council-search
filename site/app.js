@@ -1341,6 +1341,7 @@
     return x.length > max ? x.slice(0, max).replace(/\s+\S*$/, "") + "…" : x;
   }
   let meetingToken = 0;
+  const MT_SHOW = 6;   // agenda rows shown before "Show all", so "What was said" stays in sight
 
   async function loadMeeting(id) {
     const token = ++meetingToken;
@@ -1399,11 +1400,13 @@
     const pending = !upcoming && !m.minutes_url && !decided.length
       ? `<p class="mt-note">Outcomes appear here once the Clerk of Council posts the minutes, usually a week or two after the meeting.</p>` : "";
 
+    let realIdx = 0;   // count only agenda items (not minutes notes) toward the first few shown
     const rows = items.map((r) => {
+      const idx = r.kind === "other" && !r.matter_file ? realIdx : realIdx++;
       // Notes the Clerk records in the minutes ("Council convened at 2:00 P.M.") aren't agenda
       // items: shown as plain lines, without a number, badge or outcome.
       if (r.kind === "other" && !r.matter_file) {
-        return `<li class="mt-item mt-minute-note" data-text="${esc((r.title || r.matter_name || "").toLowerCase())}"><span class="mt-num"></span>
+        return `<li class="mt-item mt-minute-note${idx >= MT_SHOW ? " mt-extra" : ""}" data-text="${esc((r.title || r.matter_name || "").toLowerCase())}"><span class="mt-num"></span>
           <p class="mt-text">${esc(stripBalance(r.title || r.matter_name || ""))}</p></li>`;
       }
       const sum = r.matter_id && summary.get(r.matter_id);
@@ -1415,7 +1418,7 @@
       const mt = moments.has(r.item_id) ? `<a class="moment" href="${esc(videoAt(video.item, moments.get(r.item_id)))}" target="_blank" rel="noopener" data-tip="video_moment"
           aria-label="Watch this item from ${fmtClock(moments.get(r.item_id))}"><svg width="9" height="9" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z" fill="currentColor"/></svg>${fmtClock(moments.get(r.item_id))}</a>` : "";
       const no = (r.dissent || "").split("; ").map((x) => x.split("|")).filter((x) => x[1] === "no").map((x) => x[0]).join(", ");
-      return `<li class="mt-item" data-text="${esc(((r.title || "") + " " + (sum || "") + " " + (r.matter_file || "")).toLowerCase())}">
+      return `<li class="mt-item${idx >= MT_SHOW ? " mt-extra" : ""}" data-text="${esc(((r.title || "") + " " + (sum || "") + " " + (r.matter_file || "")).toLowerCase())}">
           <span class="mt-num">${esc((r.agenda_number || "").replace(/\.$/, ""))}</span>
           <div class="mt-body">
             <div class="mt-top"><span class="kind" tabindex="0" data-tip="${GLOSSARY[r.kind] ? r.kind : "other"}">${esc(KIND_LABEL[r.kind] || "Item")}</span>${r.matter_file ? `<a class="file mono" href="?file=${encodeURIComponent(r.matter_file)}" data-tip="file_number">${esc(r.matter_file)}</a>` : ""}${oc}${mt}</div>
@@ -1449,7 +1452,8 @@
       <section class="card mt-agenda" aria-labelledby="mt-agenda-h">
         <div class="mt-agenda-head"><h3 id="mt-agenda-h">${upcoming ? "On the agenda" : "The agenda and what happened"}</h3>
           ${items.length > 8 ? `<input type="search" class="mt-filter" placeholder="Filter these ${items.length} items" aria-label="Filter the agenda items">` : ""}</div>
-        ${items.length ? `<ol class="mt-items">${rows}</ol>` : `<p class="muted">The agenda hasn't been posted yet.</p>`}
+        ${items.length ? `<ol class="mt-items${items.length > MT_SHOW + 2 ? " collapsed" : ""}">${rows}</ol>` : `<p class="muted">The agenda hasn't been posted yet.</p>`}
+        ${items.length > MT_SHOW + 2 ? `<button type="button" class="mt-expand" aria-expanded="false">Show all ${realItems} agenda items <span aria-hidden="true">▾</span></button>` : ""}
         <p class="muted small mt-legend">${summary.size ? `<span class="ai-tag mt-ai" aria-hidden="true"><svg class="ai-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 2.5l1.9 5.6 5.6 1.9-5.6 1.9L10 17.5l-1.9-5.6L2.5 10l5.6-1.9z"/><path d="M18.5 13.5l.95 2.55 2.55.95-2.55.95-.95 2.55-.95-2.55-2.55-.95 2.55-.95z"/></svg></span> = AI summary (check the legislation for the official wording). ` : ""}Click a file number for its full history.</p>
       </section>
       ${transcript}`;
@@ -1511,6 +1515,9 @@
     if (!e.target.matches(".mt-filter")) return;
     const q = e.target.value.trim().toLowerCase();
     document.querySelectorAll("#meeting-page .mt-item").forEach((li) => { li.hidden = !!q && !li.dataset.text.includes(q); });
+    // While filtering, look through every item, not just the first few.
+    const list = document.querySelector("#meeting-page .mt-items");
+    if (list) list.classList.toggle("filtering", !!q);
   });
 
   // One HTML file, several pages: the address bar's #part says which one is showing
@@ -1650,6 +1657,15 @@
       if (e.target.closest("[data-back]") && history.length > 1) { e.preventDefault(); history.back(); return; }
       const ics = e.target.closest("[data-ics]");
       if (ics) { meetingIcs(ics.dataset.ics).catch((err) => console.error(err)); return; }
+      const exp = e.target.closest(".mt-expand");
+      if (exp) {
+        const list = exp.previousElementSibling, open = exp.getAttribute("aria-expanded") === "true";
+        list.classList.toggle("collapsed", open);
+        exp.setAttribute("aria-expanded", String(!open));
+        exp.innerHTML = open ? `Show all ${list.querySelectorAll(".mt-item:not(.mt-minute-note)").length} agenda items <span aria-hidden="true">▾</span>` : `Show fewer <span aria-hidden="true">▴</span>`;
+        if (open) list.closest("section").scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
       const more = e.target.closest(".mt-more");
       if (more) {
         const p = more.previousElementSibling, open = more.getAttribute("aria-expanded") === "true";

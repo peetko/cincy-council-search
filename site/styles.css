@@ -652,3 +652,8 @@ details.timeline li a.when:hover { color: var(--navy); border-bottom-color: var(
 .ai-tag.mt-ai { display: inline-flex; vertical-align: -2px; margin-right: 6px; cursor: help; color: #2f5bd3; }
 .mt-legend .ai-tag.mt-ai { margin-right: 2px; }
 .mt-more { font-size: 14px; margin-top: 2px; }
+.mt-items.collapsed:not(.filtering) .mt-extra { display: none; }
+.mt-expand { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 8px; min-height: 42px; border: 1px dashed #b8c2d1;
+  border-radius: 10px; background: #f7f9fc; color: var(--navy); font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
+.mt-expand:hover { background: var(--badge); border-color: var(--navy); }
+.mt-items.filtering ~ .mt-expand { display: none; }
