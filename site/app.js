@@ -1321,7 +1321,7 @@
   // "ORDINANCE (EMERGENCY) submitted by Sheryl M. Long, City Manager, on 11/2/2026, AUTHORIZING…"
   // -> "AUTHORIZING…": the who-and-when preamble is shown separately.
   function plainTitle(t) {
-    t = stripBalance(t || "").trim();
+    t = stripBalance(t || "").replace(/\s+/g, " ").trim();
     const m = /^(?:[A-Z][A-Z ]+(?:\([^)]*\)\s*)*),?\s*submitted by\s+.*?,\s*(?:(?:from|by)\s+[^,]+,\s*[^,]+,\s*)?(?:on\s+\d{1,2}\/\d{1,2}\/\d{2,4},?\s*)?(?=[A-Z]{3,}|WE MOVE|I (?:hereby )?(?:re)?appoint)/.exec(t);
     // Otherwise at least drop a leading type word the badge already shows ("COMMUNICATION, submitted by…").
     t = m ? t.slice(m[0].length) : t.replace(/^(?:ORDINANCE|RESOLUTION|MOTION|COMMUNICATION|REPORT|PETITION|PRESENTATION|APPOINTMENT|REAPPOINTMENT|STATEMENT)(?:\s*\([^)]*\))*,?\s+(?=[a-z])/i, "");
@@ -1330,7 +1330,16 @@
       .replace(/\b[A-Z]{4,}(?:ING|ED|S)?\b/g, (w) => /(?:ING|ED)$/.test(w) || /^(?:THAT|WITH|FROM)$/.test(w) ? w.toLowerCase() : w);
     return t.replace(/^[a-z]/, (c) => c.toUpperCase());
   }
-  const firstSentence = (s, max = 260) => { const m = /^(.{40,}?[.!?])\s/.exec(s || ""); let x = m ? m[1] : (s || ""); return x.length > max ? x.slice(0, max).replace(/\s+\S*$/, "") + "…" : x; };
+  // The first sentence, not fooled by abbreviations ("amend Ord. No. 123", "Inc.", "St.").
+  const ABBR = /(?:\b(?:Ord|Ords|No|Nos|St|Ave|Rd|Blvd|Dr|Mr|Ms|Mrs|Jr|Sr|Inc|Co|Corp|Ltd|LLC|Sec|Secs|Div|Vol|Dept|Mt|vs|etc|approx|ca)|\b[A-Z]|\d)\.$/;
+  function firstSentence(s, max = 260) {
+    s = s || "";
+    const re = /[.!?](?=\s+[A-Z("“0-9])/g;
+    let m, end = -1;
+    while ((m = re.exec(s))) { if (m.index >= 40 && !ABBR.test(s.slice(0, m.index + 1))) { end = m.index + 1; break; } }
+    const x = end > 0 ? s.slice(0, end) : s;
+    return x.length > max ? x.slice(0, max).replace(/\s+\S*$/, "") + "…" : x;
+  }
   let meetingToken = 0;
 
   async function loadMeeting(id) {
@@ -1398,7 +1407,9 @@
           <p class="mt-text">${esc(stripBalance(r.title || r.matter_name || ""))}</p></li>`;
       }
       const sum = r.matter_id && summary.get(r.matter_id);
-      const text = sum ? firstSentence(sum) : firstSentence(plainTitle(r.title || r.matter_name), 220);
+      const full = sum || plainTitle(r.title || r.matter_name);
+      const text = firstSentence(full, sum ? 260 : 220);
+      const cut = text.replace(/…$/, "").length < full.trim().length - 2;
       const oc = r.outcome && r.outcome_cat !== "scheduled" && !(r.outcome === "On agenda" && !upcoming)
         ? `<span class="outcome" tabindex="0" data-tip="${outcomeTipFor(r)}">${OUTCOME_ICON[r.outcome_cat] || ""}${esc(r.outcome)}</span>` : "";
       const mt = moments.has(r.item_id) ? `<a class="moment" href="${esc(videoAt(video.item, moments.get(r.item_id)))}" target="_blank" rel="noopener" data-tip="video_moment"
@@ -1408,7 +1419,8 @@
           <span class="mt-num">${esc((r.agenda_number || "").replace(/\.$/, ""))}</span>
           <div class="mt-body">
             <div class="mt-top"><span class="kind" tabindex="0" data-tip="${GLOSSARY[r.kind] ? r.kind : "other"}">${esc(KIND_LABEL[r.kind] || "Item")}</span>${r.matter_file ? `<a class="file mono" href="?file=${encodeURIComponent(r.matter_file)}" data-tip="file_number">${esc(r.matter_file)}</a>` : ""}${oc}${mt}</div>
-            <p class="mt-text">${sum ? `<span class="ai-tag mt-ai" tabindex="0" data-tip="ai_summary" aria-label="AI summary"><svg class="ai-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 2.5l1.9 5.6 5.6 1.9-5.6 1.9L10 17.5l-1.9-5.6L2.5 10l5.6-1.9z"/><path d="M18.5 13.5l.95 2.55 2.55.95-2.55.95-.95 2.55-.95-2.55-2.55-.95 2.55-.95z"/></svg></span>` : ""}${esc(text)}</p>
+            <p class="mt-text"${cut ? ` data-short="${esc(text)}" data-full="${esc(full)}"` : ""}>${sum ? `<span class="ai-tag mt-ai" tabindex="0" data-tip="ai_summary" aria-label="AI summary"><svg class="ai-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 2.5l1.9 5.6 5.6 1.9-5.6 1.9L10 17.5l-1.9-5.6L2.5 10l5.6-1.9z"/><path d="M18.5 13.5l.95 2.55 2.55.95-2.55.95-.95 2.55-.95-2.55-2.55-.95 2.55-.95z"/></svg></span>` : ""}<span class="mt-words">${esc(text)}</span></p>
+            ${cut ? `<button type="button" class="linkish mt-more" aria-expanded="false">Read more</button>` : ""}
             ${r.dissent ? `<p class="mt-dissent">${no ? "Voted no: " + esc(no) : "Split vote (abstentions)"}</p>` : ""}
           </div></li>`;
     }).join("");
@@ -1638,6 +1650,14 @@
       if (e.target.closest("[data-back]") && history.length > 1) { e.preventDefault(); history.back(); return; }
       const ics = e.target.closest("[data-ics]");
       if (ics) { meetingIcs(ics.dataset.ics).catch((err) => console.error(err)); return; }
+      const more = e.target.closest(".mt-more");
+      if (more) {
+        const p = more.previousElementSibling, open = more.getAttribute("aria-expanded") === "true";
+        p.querySelector(".mt-words").textContent = open ? p.dataset.short : p.dataset.full;
+        more.setAttribute("aria-expanded", String(!open));
+        more.textContent = open ? "Read more" : "Show less";
+        return;
+      }
       const wh = e.target.closest("[data-whole]");
       if (wh) { meetingWhole(wh).catch((err) => { console.error(err); wh.textContent = "Couldn't load"; }); return; }
       const mt = e.target.closest("[data-meeting]");

@@ -651,3 +651,4 @@ details.timeline li a.when:hover { color: var(--navy); border-bottom-color: var(
 .mt-minute-note { padding: 8px 0; }
 .ai-tag.mt-ai { display: inline-flex; vertical-align: -2px; margin-right: 6px; cursor: help; color: #2f5bd3; }
 .mt-legend .ai-tag.mt-ai { margin-right: 2px; }
+.mt-more { font-size: 14px; margin-top: 2px; }
