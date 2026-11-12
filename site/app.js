@@ -47,6 +47,15 @@
   // Turn what someone typed into a safe SQLite full-text query.
   // "exact phrase" stays a phrase, word* matches endings, everything else is ANDed.
   // title:"…" (or title:word) matches only an item's title, the legislation's own text.
+  // Everyday words that don't help find legislation ("how much did the city spend on potholes"
+  // searches for spend + potholes). Only dropped when they're not the whole search, and never
+  // inside "quotes".
+  const FILLER = new Set(("a an the of to in on for and or is are was were be been being am do does did done how what when where " +
+    "which who whom whose why about with by at from that this these those it its as much many any some there their they them " +
+    "we our us you your i me my he she his her has have had will would should could can may might must not no yes if then than " +
+    "so just also very into over under up down out more most less least all each every one ever please tell show find know want " +
+    "looking look search something anything thing things get got").split(" "));
+
   function ftsQuery(input) {
     const parts = [];
     input = input.replace(/\btitle:(?:"([^"]*)"|(\S+))/gi, (_, ph, w) => {
@@ -59,14 +68,22 @@
       if (words) parts.push('"' + words.join(" ") + '"');
       return " ";
     });
+    const bare = [];
     for (const raw of rest.split(/\s+/)) {
       const star = raw.endsWith("*");
       const words = raw.match(/[\p{L}\p{N}]+/gu);
       if (!words) continue;
-      parts.push('"' + words.join(" ") + '"' + (star ? "*" : ""));
+      bare.push({ term: '"' + words.join(" ") + '"' + (star ? "*" : ""), filler: !star && words.length === 1 && FILLER.has(words[0].toLowerCase()) });
     }
+    const useful = bare.filter((b) => !b.filler);
+    (useful.length || parts.length ? useful : bare).forEach((b) => parts.push(b.term));
     return parts.join(" ");
   }
+  // The separate terms of a search ('"bike" "lanes"*' -> ['"bike"', '"lanes"*']); title: parts stay whole.
+  const ftsTerms = (fts) => fts.match(/\{[^}]*\} : "[^"]*"|"[^"]*"\*?/g) || [];
+  // When nothing has all the words: the query actually used, and how to describe it.
+  let relaxed = null;          // { fts, dropped: [...words], any: bool } or null
+  const activeFts = () => (relaxed ? relaxed.fts : ftsQuery(state.q));
 
   // ------------------------------------------------------------- database
   function db() {
@@ -382,7 +399,7 @@
 
   function searchParts(docMids) {
     const { where, args } = whereClause();
-    const fts = ftsQuery(state.q);
+    const fts = activeFts();
     // The default "latest items" view only needs recent meetings; don't group all six years.
     if (!fts && !anyFilter()) { where.push("f.date >= ?"); args.push(addDays(today(), -90)); }
     let from, allArgs, order;
@@ -390,7 +407,7 @@
       from = "items_fts JOIN facets f ON f.item_id = items_fts.rowid";
       where.unshift("items_fts MATCH ?");
       allArgs = [fts, ...args];
-      order = state.sort === "relevance" ? "MIN(score)" : "MAX(d) DESC, MAX(ic) DESC";
+      order = state.sort === "relevance" || (relaxed && relaxed.any) ? "MIN(score)" : "MAX(d) DESC, MAX(ic) DESC";
     } else {
       from = "facets f";
       allArgs = args;
@@ -450,7 +467,31 @@
   async function runSearchInner(append) {
     const d = await db();
     if (state.q.trim() && !ftsQuery(state.q)) { renderNothing("Type at least one word or number."); return; }
-    const ftsQ = ftsQuery(state.q);
+    if (!append) {
+      // Nothing has all the words? First leave out words that appear nowhere (usually a typo);
+      // if that still finds nothing, show items with some of the words. Either way, say so.
+      relaxed = null;
+      const terms = ftsTerms(ftsQuery(state.q));
+      if (terms.length > 1 && !state.docs) {
+        const strict = searchParts(null);
+        const hasAll = await d.query(`SELECT 1 FROM ${strict.hits} LIMIT 1`, strict.allArgs);
+        if (!hasAll.length) {
+          const found = [], dropped = [];
+          for (const t of terms) {
+            const r = await d.query("SELECT 1 FROM items_fts WHERE items_fts MATCH ? LIMIT 1", [t]);
+            (r.length ? found : dropped).push(t);
+          }
+          const words = (ts) => ts.map((t) => t.replace(/^\{[^}]*\} : /, "").replace(/"/g, ""));
+          if (found.length && dropped.length) {
+            relaxed = { fts: found.join(" "), dropped: words(dropped), any: false };
+            const p = searchParts(null);
+            if (!(await d.query(`SELECT 1 FROM ${p.hits} LIMIT 1`, p.allArgs)).length) relaxed = null;
+          }
+          if (!relaxed && found.length > 1) relaxed = { fts: found.join(" OR "), dropped: words(dropped), any: true };
+        }
+      }
+    }
+    const ftsQ = activeFts();
     const useDocs = !!(state.docs && ftsQ && !/\{title/.test(ftsQ));
     const docMids = useDocs ? await docMatches(ftsQ).catch((e) => { console.error(e); return []; }) : null;
     lastDocMids = new Set(docMids || []);
@@ -491,19 +532,28 @@
       if (!append) {
         const [c] = await d.query(`SELECT COUNT(DISTINCT k) AS n, COUNT(DISTINCT ev) AS meetings FROM ${hits}`, allArgs);
         renderHead(c.n, c.meetings, !!fts);
-        renderTabs(fts, c.n);
+        renderTabs(ftsQuery(state.q), c.n);
         $("docs-offer").hidden = !(fts && !state.docs && docsAvailable && !/\{title/.test(fts));
         if (useDocs) $("res-sub").textContent += ", including the full text of legislation";
-        if (fts) {
+        if (fts && c.n && !(relaxed && relaxed.any)) {
           const q = await d.query(`SELECT substr(d,1,4) AS y, (CAST(substr(d,6,2) AS INTEGER)+2)/3 AS q, COUNT(*) AS n
                                    FROM ${hits} GROUP BY y, q`, allArgs);
           renderSpark(q);
         } else {
           $("spark").hidden = true;
         }
-        $("result-list").innerHTML = "";
+        const dropNote = relaxed && relaxed.dropped.length
+          ? `No item mentions <strong>${relaxed.dropped.map((w) => "“" + esc(w) + "”").join(", ")}</strong> (check the spelling)` : "";
+        $("result-list").innerHTML = relaxed && c.n
+          ? `<p class="relaxed-note">${relaxed.any
+              ? (dropNote ? dropNote + ", and nothing has all the other words" : "Nothing has all of these words") + `, so these results have <strong>some of them</strong>, best matches first.`
+              : dropNote + `, so these are results for the other words.`}</p>` : "";
         $("csv").hidden = !c.n;
-        if (!c.n) renderNothing(fts ? "Nothing matches. Try fewer words, a word ending with *, or clear the filters." : "Nothing matches these filters.");
+        if (!c.n) {
+          renderNothing(fts ? `Nothing matches${anyFilter() ? " with these filters" : ""}. Check the spelling, try fewer or different words, or end a word with * to match its beginning (<em>bike*</em> finds bikes and bikeway).`
+            : "Nothing matches these filters.");
+          if (fts) offerSaid(ftsQuery(state.q));
+        }
         $("more").hidden = c.n <= state.offset + pageSize();
         $("more").dataset.total = c.n;
       } else {
@@ -539,7 +589,7 @@
     if (state.member) h = `${things(n)} sponsored by ${esc(state.member)}`;
     else if (state.file) h = `File ${esc(state.file)}`;
     else if (state.meeting && !state.member) h = esc($("res-h").dataset.meetingTitle || "Meeting agenda");
-    else if (isSearch) h = `${n.toLocaleString()} result${n === 1 ? "" : "s"} for “${esc(state.q.trim())}”`;
+    else if (isSearch) h = `${n.toLocaleString()} result${n === 1 ? "" : "s"} for “${esc(state.q.trim())}”` + (relaxed ? ` <span class="relaxed-tag">${relaxed.any ? "some of the words" : "without “" + esc(relaxed.dropped.join(", ")) + "”"}</span>` : "");
     else if (state.vote === "@split") h = `${n.toLocaleString()} split vote${n === 1 ? "" : "s"}`;
     else if (state.vote) h = `${things(n)} where ${esc(state.vote)} voted no or abstained`;
     else h = anyFilter() ? `${things(n)} match` : "Latest agenda and minutes items";
@@ -548,11 +598,22 @@
     $("res-sub").textContent = (isSearch || anyFilter()) ? `in ${meetings.toLocaleString()} meeting${meetings === 1 ? "" : "s"}`
       : `from ${meetings.toLocaleString()} meetings in the last 90 days and coming up`;
     $("sorter").hidden = !n;
-    document.querySelectorAll("#sorter button[data-sort]").forEach((b) => { b.hidden = !isSearch; b.setAttribute("aria-pressed", String(b.dataset.sort === state.sort)); });
-    document.querySelector("#sorter .sortlabel").hidden = !isSearch;
+    const best = !!(relaxed && relaxed.any);
+    document.querySelectorAll("#sorter button[data-sort]").forEach((b) => { b.hidden = !isSearch || best; b.setAttribute("aria-pressed", String(b.dataset.sort === state.sort)); });
+    document.querySelector("#sorter .sortlabel").textContent = best ? "· best matches first" : "· sort by";
+    document.querySelector("#sorter .sortlabel").hidden = !isSearch;  // (text set above)
     document.querySelector('#sorter [data-tip="relevance"]').hidden = !isSearch;
   }
 
+  // When nothing matches in legislation, say whether it came up at meetings.
+  function offerSaid(fts) {
+    saidDb().then((ok) => ok && saidCounts(fts)).then((c) => {
+      if (!c || !c.n || document.body.classList.contains("said-mode")) return;
+      const box = document.querySelector("#result-list .notice");
+      if (box) box.insertAdjacentHTML("beforeend", `<p class="said-offer">But it was said at <strong>${c.meetings.toLocaleString()} meeting${c.meetings === 1 ? "" : "s"}</strong>.
+        <button type="button" class="linkish" data-said-open>See what was said →</button></p>`);
+    }).catch(() => {});
+  }
   function renderNothing(msg) {
     $("result-list").innerHTML = `<div class="card notice">${msg}</div>`;
     $("more").hidden = true;
@@ -1269,6 +1330,7 @@
     const active = !!(state.q.trim() || anyFilter() || browsing);
     $("home-cards").hidden = active;
     $("results-area").hidden = !active;
+    document.body.classList.toggle("has-results", active);   // phones: a compact header so results show first
     return active;
   }
   function setFiltersOpen(open) {
@@ -1320,7 +1382,7 @@
       $("results-area").scrollIntoView({ behavior: "smooth", block: "start" });
     });
     bindTooltips();
-    document.querySelectorAll("[data-try]").forEach((b) => b.addEventListener("click", () => { $("q").value = b.dataset.try; state.q = b.dataset.try; search(); }));
+    document.querySelectorAll("[data-try]").forEach((b) => b.addEventListener("click", () => { $("q").value = b.dataset.try; state.q = b.dataset.try; state.said = b.dataset.said || ""; search(); }));
     $("filters").addEventListener("change", (e) => {
       const k = e.target.id.replace("f-", "");
       state[k] = e.target.value;
@@ -1339,6 +1401,7 @@
       if (ctx) { saidContext(ctx).catch((err) => { console.error(err); ctx.textContent = "Couldn't load"; }); return; }
       const all = e.target.closest("[data-said-all]");
       if (all) { saidShowAll(all).catch((err) => { console.error(err); all.textContent = "Couldn't load"; }); }
+      if (e.target.closest("[data-said-open]")) { state.said = "1"; search(); }
     });
     $("csv").addEventListener("click", downloadCsv);
     document.querySelectorAll(".toggle button[data-period]").forEach((b) => b.addEventListener("click", () => { state.period = b.dataset.period; renderPeriod(); }));

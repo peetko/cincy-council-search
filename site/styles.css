@@ -569,3 +569,25 @@ body.said-mode #docs-toggle-wrap, body.said-mode #docs-offer, body.said-mode #cs
 /* Line the switch's label up with the text beside it: its baseline comes from the words, not the toggle graphic. */
 .results-head .ft-switch { align-items: baseline; }
 .results-head .ft-switch .sw, .results-head .ft-switch .tip { align-self: center; }
+
+/* ---------------------------------------------------------------- forgiving search */
+.relaxed-note { font-size: 14px; color: var(--ink-2); background: var(--badge); border-radius: 10px; padding: 10px 14px; margin: 0 0 12px; }
+.relaxed-tag { display: inline-block; vertical-align: middle; margin-left: 6px; padding: 2px 9px; border-radius: 999px; background: var(--badge);
+  color: var(--ink-2); font-size: 13px; font-weight: 600; letter-spacing: 0; }
+.said-offer { margin: 10px 0 0; }
+
+/* Phones: once there are results, keep just the search box in the header so results start on the first screen. */
+@media (max-width: 640px) {
+  body.has-results .hero h1, body.has-results .tries, body.has-results .hint,
+  body.has-results .brand small, body.has-results #filters-hint, body.has-results #timing,
+  body.has-results #csv, body.has-results #spark { display: none !important; }
+  body.has-results header.site .wrap { padding-top: 12px; padding-bottom: 22px; gap: 12px; }
+  body.has-results .topbar { flex-wrap: nowrap; }
+  body.has-results .searchbar { flex-wrap: nowrap; }
+  body.has-results .searchbox { flex: 1 1 0; min-width: 0; min-height: 48px; }
+  body.has-results nav.main { flex-wrap: nowrap; align-items: center; }
+  body.has-results .searchbox input { height: 46px; font-size: 17px; }
+  body.has-results .searchbar button { flex: 0 0 auto; min-height: 48px; padding: 0 16px; font-size: 16px; }
+  body.has-results .res-tabs { margin-bottom: 8px; }
+}
+.tries .try-said svg { vertical-align: -2px; margin-right: 2px; }
