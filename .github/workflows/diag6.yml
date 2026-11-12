@@ -1,0 +1,18 @@
+name: Video moments probe
+on:
+  push:
+    branches: [diag6]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          scripts/get_data.sh "${{ github.repository }}" "https://peetko.github.io/cincy-council-search"
+          python scripts/fetch_data.py --assemble
+          python tests/moments_probe.py
