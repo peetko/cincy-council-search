@@ -580,15 +580,16 @@ body.said-mode #docs-toggle-wrap, body.said-mode #docs-offer, body.said-mode #cs
 @media (max-width: 640px) {
   body.has-results .hero h1, body.has-results .tries, body.has-results .hint,
   body.has-results .brand small, body.has-results #filters-hint, body.has-results #timing,
-  body.has-results #csv, body.has-results #spark { display: none !important; }
-  body.has-results header.site .wrap { padding-top: 12px; padding-bottom: 22px; gap: 12px; }
-  body.has-results .topbar { flex-wrap: nowrap; }
-  body.has-results .searchbar { flex-wrap: nowrap; }
-  body.has-results .searchbox { flex: 1 1 0; min-width: 0; min-height: 48px; }
-  body.has-results nav.main { flex-wrap: nowrap; align-items: center; }
-  body.has-results .searchbox input { height: 46px; font-size: 17px; }
-  body.has-results .searchbar button { flex: 0 0 auto; min-height: 48px; padding: 0 16px; font-size: 16px; }
+  body.has-results #csv, body.has-results #spark, body.inner .brand small { display: none !important; }
+  body.has-results header.site .wrap, body.inner header.site .wrap { padding-top: 12px; padding-bottom: 22px; gap: 12px; }
+  body.has-results .topbar, body.inner .topbar { flex-wrap: nowrap; }
+  body.has-results .searchbar, body.inner .searchbar { flex-wrap: nowrap; }
+  body.has-results .searchbox, body.inner .searchbox { flex: 1 1 0; min-width: 0; min-height: 48px; }
+  body.has-results nav.main, body.inner nav.main { flex-wrap: nowrap; align-items: center; }
+  body.has-results .searchbox input, body.inner .searchbox input { height: 46px; font-size: 17px; }
+  body.has-results .searchbar button, body.inner .searchbar button { flex: 0 0 auto; min-height: 48px; padding: 0 16px; font-size: 16px; }
   body.has-results .res-tabs { margin-bottom: 8px; }
+  .mt-glance div { padding: 8px 10px; } .mt-glance b { font-size: 20px; }
 }
 .tries .try-said svg { vertical-align: -2px; margin-right: 2px; }
 /* "▶ video 1:02:14" next to an agenda appearance */
@@ -598,3 +599,51 @@ body.said-mode #docs-toggle-wrap, body.said-mode #docs-offer, body.said-mode #cs
 .moment svg { width: 9px; height: 9px; flex: none; display: block; }
 details.timeline li .moment { grid-column: 5; margin-left: 0; }
 @media (max-width: 640px) { details.timeline li .moment { grid-column: 1 / -1; order: 4; justify-self: start; } }
+
+/* ---------------------------------------------------------------- meeting pages */
+#meeting-page { display: flex; flex-direction: column; gap: 18px; }
+.mt-back { margin: 0; font-size: 14px; }
+.mt-kicker { margin: 0 0 4px; font-size: 13px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mt-head h2 { margin: 0; font-size: 32px; line-height: 1.15; }
+.mt-when { margin: 6px 0 0; font-size: 16px; color: var(--ink-2); }
+.mt-status { font-size: 12px; letter-spacing: 0.02em; text-transform: none; padding: 3px 10px; border-radius: 999px; font-weight: 700; }
+.mt-status.up { background: #e3ecff; color: var(--navy); }
+.mt-status.today { background: var(--red); color: #fff; }
+.mt-status.held { background: var(--badge); color: var(--ink-2); }
+.mt-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.mt-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #c9d0d9; background: #fff;
+  color: var(--navy); font: inherit; font-size: 14.5px; font-weight: 700; text-decoration: none; cursor: pointer; }
+.mt-btn:hover { border-color: var(--navy); }
+.mt-btn.primary { background: var(--navy); color: #fff; border-color: var(--navy); }
+.mt-btn.primary:hover { background: #001a52; }
+.mt-btn.quiet { border-color: transparent; background: transparent; font-weight: 600; }
+.mt-glance { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.mt-glance div { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
+.mt-glance b { font-size: 26px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.mt-glance span { font-size: 13px; color: var(--ink-2); }
+@media (max-width: 640px) { .mt-glance { grid-template-columns: repeat(2, minmax(0, 1fr)); } .mt-head h2 { font-size: 26px; } }
+.mt-note { margin: 0; font-size: 14px; color: var(--ink-2); background: var(--badge); border-radius: 10px; padding: 10px 14px; }
+.mt-agenda-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.mt-agenda-head h3, .mt-said h3 { margin: 0; font-size: 19px; }
+.mt-filter { min-height: 38px; border: 1px solid #c9d0d9; border-radius: 8px; padding: 0 12px; font: inherit; font-size: 14px; min-width: 240px; }
+.mt-items { list-style: none; margin: 0; padding: 0; }
+.mt-item { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; padding: 12px 0; border-top: 1px solid var(--grid); }
+.mt-item:first-child { border-top: 0; }
+.mt-num { font-weight: 800; color: var(--ink-3); font-variant-numeric: tabular-nums; text-align: right; padding-top: 3px; }
+.mt-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.mt-top .file { font-size: 13px; color: var(--ink-2); }
+.mt-top .outcome { margin-left: auto; }
+.mt-top .moment { margin-left: 0; }
+.mt-text { margin: 6px 0 0; line-height: 1.5; }
+.mt-text .ai-icon { margin-right: 6px; }
+.mt-dissent { margin: 4px 0 0; font-size: 13.5px; color: #9b1c1c; font-weight: 600; }
+.mt-legend { margin: 10px 0 0; }
+.mt-said-form { display: flex; gap: 8px; margin: 10px 0; }
+.mt-said-form input { flex: 1 1 auto; min-width: 0; min-height: 42px; border: 1px solid #c9d0d9; border-radius: 8px; padding: 0 12px; font: inherit; }
+.mt-said-form button { min-height: 42px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--navy); color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+.mt-said-results:empty { display: none; }
+.mt-whole { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; max-height: 70vh; overflow-y: auto; padding-right: 6px; }
+details.timeline li a.when { color: inherit; text-decoration: none; border-bottom: 1px dotted var(--ink-3); }
+details.timeline li a.when:hover { color: var(--navy); border-bottom-color: var(--navy); }
+.mt-agenda, .mt-said { padding: 20px 24px; }
+@media (max-width: 640px) { .mt-agenda, .mt-said { padding: 16px; } .mt-filter { min-width: 0; width: 100%; } }

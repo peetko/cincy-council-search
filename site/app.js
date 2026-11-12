@@ -300,7 +300,7 @@
   }
   function renderSaidMeeting(m, list, total, k) {
     const links = [];
-    if (m.event_id) links.push(`<button type="button" class="linkish" data-meeting="${m.event_id}" data-title="${esc((m.body || "") + ", " + fmtDate(m.date))}">This meeting's agenda items</button>`);
+    if (m.event_id) links.push(`<button type="button" class="linkish" data-meeting="${m.event_id}">Meeting page</button>`);
     links.push(`<a href="https://archive.org/details/${encodeURIComponent(m.item)}" target="_blank" rel="noopener">Full video ↗</a>`);
     const more = total - list.length;
     return `<article class="card result said" data-k="${k}">
@@ -388,7 +388,7 @@
     return { where, args };
   }
 
-  const COLS = `i.item_id, i.matter_id, i.date, i.body, i.kind, i.matter_file, i.title, i.outcome, i.outcome_cat, i.yes_count, i.action,
+  const COLS = `i.item_id, i.event_id, i.matter_id, i.date, i.body, i.kind, i.matter_file, i.title, i.outcome, i.outcome_cat, i.yes_count, i.action,
     (SELECT dissent FROM facets WHERE facets.item_id = i.item_id) AS dissent,
     i.sponsors, i.departments, i.matter_url, m.minutes_url, m.agenda_url, m.video_url, m.page_url`;
 
@@ -833,7 +833,7 @@
       const shown = steps.length > 5 ? steps.slice(-5) : steps;
       timeline = `<details class="timeline"${steps.length <= 4 ? " open" : ""}><summary>History: ${steps.length} steps, ${esc(fmtDate(steps[0].date))} – ${esc(fmtDate(latest.date))}</summary><ol>`
         + (steps.length > shown.length ? `<li class="more-steps">${steps.length - shown.length} earlier step${steps.length - shown.length === 1 ? "" : "s"} not shown</li>` : "")
-        + shown.map((r) => `<li data-iid="${r.item_id}"><span class="when">${esc(fmtDate(r.date))}</span><span class="where">${esc(r.body)}</span>
+        + shown.map((r) => `<li data-iid="${r.item_id}"><a class="when" href="#meeting/${r.event_id}" title="Everything about this meeting">${esc(fmtDate(r.date))}</a><span class="where">${esc(r.body)}</span>
             <span class="what" tabindex="0" data-tip="${outcomeTipFor(r)}">${esc(r.outcome || "")}</span>
             ${r.minutes_url ? `<a href="${esc(r.minutes_url)}" target="_blank" rel="noopener">minutes</a>` : (r.agenda_url ? `<a href="${esc(r.agenda_url)}" target="_blank" rel="noopener">agenda</a>` : "")}</li>`).join("")
         + `</ol></details>`;
@@ -1315,17 +1315,194 @@
   }
 
   // ------------------------------------------------------------- pages ("views")
+  // ------------------------------------------------------------- meeting pages (#meeting/12345)
+  // Everything about one meeting in one place: before it, the agenda in plain language; after it,
+  // the outcomes, minutes, video and transcript.
+  // "ORDINANCE (EMERGENCY) submitted by Sheryl M. Long, City Manager, on 11/2/2026, AUTHORIZING…"
+  // -> "AUTHORIZING…": the who-and-when preamble is shown separately.
+  function plainTitle(t) {
+    t = stripBalance(t || "").trim();
+    const m = /^(?:[A-Z][A-Z ]+(?:\([^)]*\)\s*)*),?\s*submitted by\s+.*?,\s*(?:(?:from|by)\s+[^,]+,\s*[^,]+,\s*)?(?:on\s+\d{1,2}\/\d{1,2}\/\d{2,4},?\s*)?(?=[A-Z]{3,}|WE MOVE|I (?:hereby )?(?:re)?appoint)/.exec(t);
+    t = m ? t.slice(m[0].length) : t;
+    // The City writes the action words in capitals (AUTHORIZING, ESTABLISHING); calmer in normal case.
+    t = t.replace(/\b[A-Z]{4,}(?:ING|ED|S)?\b/g, (w) => /(?:ING|ED)$/.test(w) || /^(?:WE|MOVE|THAT|AND|THE|FOR|WITH|FROM)$/.test(w) ? w.toLowerCase() : w)
+      .replace(/\bWE MOVE\b/g, "we move");
+    return t.replace(/^[a-z]/, (c) => c.toUpperCase());
+  }
+  const firstSentence = (s, max = 260) => { const m = /^(.{40,}?[.!?])\s/.exec(s || ""); let x = m ? m[1] : (s || ""); return x.length > max ? x.slice(0, max).replace(/\s+\S*$/, "") + "…" : x; };
+  let meetingToken = 0;
+
+  async function loadMeeting(id) {
+    const token = ++meetingToken;
+    const box = $("meeting-page");
+    box.innerHTML = `<p class="muted"><span class="spinner" aria-hidden="true"></span> Loading the meeting…</p>`;
+    const d = await db();
+    const [m] = await d.query("SELECT * FROM meetings WHERE event_id = ?", [Number(id)]);
+    if (!m) { box.innerHTML = `<div class="card notice">That meeting isn't in the records. <a href="#coming-up">See upcoming meetings</a>.</div>`; return; }
+    const items = await d.query(`SELECT i.item_id, i.matter_id, i.matter_file, i.agenda_number, i.seq, i.kind, i.title, i.matter_name, i.outcome,
+        i.outcome_cat, i.yes_count, i.no_count, i.tally, i.sponsors, i.matter_url, (SELECT dissent FROM facets WHERE facets.item_id = i.item_id) AS dissent
+        FROM items i WHERE i.event_id = ? ORDER BY i.seq, i.item_id`, [m.event_id]);
+    if (token !== meetingToken) return;
+    const mids = items.map((r) => r.matter_id).filter(Boolean);
+    const [sums, said] = await Promise.all([
+      loadDocsStats().then((ds) => ds && ds.summaries_public && mids.length && docsDb().then((ok) => ok &&
+        docsQuery(`SELECT matter_id, summary FROM summaries WHERE status = 'ok' AND matter_id IN (${mids.join(",")})`, [])))
+        .catch(() => null),
+      saidDb().then((ok) => ok && saidQuery("SELECT * FROM tmeetings WHERE event_id = ? AND status = 'ok'", [m.event_id])).catch(() => null),
+    ]);
+    const summary = new Map((sums || []).map((r) => [Number(r.matter_id), r.summary]));
+    const video = said && said[0];
+    let moments = new Map();
+    if (video && items.length) {
+      const rows = await saidQuery(`SELECT item_id, t FROM moments WHERE item_id IN (${items.map((r) => r.item_id).join(",")})`, []).catch(() => []);
+      moments = new Map(rows.map((r) => [Number(r.item_id), r.t]));
+    }
+    if (token !== meetingToken) return;
+    renderMeeting(m, items, summary, video, moments);
+  }
+
+  function renderMeeting(m, items, summary, video, moments) {
+    const t = today(), upcoming = m.date > t, isToday = m.date === t;
+    const when = new Date(m.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+    const status = isToday ? `<span class="mt-status today">Today</span>` : upcoming ? `<span class="mt-status up">Upcoming</span>`
+      : `<span class="mt-status held">${m.minutes_url ? "Held · minutes posted" : "Held"}</span>`;
+    const decided = items.filter((r) => r.outcome_cat === "passed" || r.outcome_cat === "failed");
+    const split = items.filter((r) => r.dissent).length;
+    const buttons = [];
+    if (m.agenda_url) buttons.push(`<a class="mt-btn" href="${esc(m.agenda_url)}" target="_blank" rel="noopener">Agenda PDF</a>`);
+    if (m.minutes_url) buttons.push(`<a class="mt-btn" href="${esc(m.minutes_url)}" target="_blank" rel="noopener">Minutes PDF</a>`);
+    if (video) buttons.push(`<a class="mt-btn primary" href="https://archive.org/details/${encodeURIComponent(video.item)}" target="_blank" rel="noopener">
+      <svg width="11" height="11" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z" fill="currentColor"/></svg> Watch the video${video.duration ? ` (${Math.round(video.duration / 60)} min)` : ""}</a>`);
+    if (upcoming || isToday) buttons.push(`<button type="button" class="mt-btn" data-ics="${m.event_id}">Add to my calendar</button>`);
+    if (m.page_url) buttons.push(`<a class="mt-btn quiet" href="${esc(m.page_url)}" target="_blank" rel="noopener">On Legistar ↗</a>`);
+
+
+    const glance = !upcoming ? `<div class="mt-glance">
+        <div><b>${items.length}</b><span>agenda item${items.length === 1 ? "" : "s"}</span></div>
+        <div><b>${decided.filter((r) => r.outcome_cat === "passed").length}</b><span>passed or adopted</span></div>
+        <div><b>${split}</b><span>split vote${split === 1 ? "" : "s"}</span></div>
+        <div><b>${video ? moments.size : "–"}</b><span>${video ? "items with a video link" : "no transcript yet"}</span></div>
+      </div>` : "";
+    const pending = !upcoming && !m.minutes_url && !decided.length
+      ? `<p class="mt-note">Outcomes appear here once the Clerk of Council posts the minutes, usually a week or two after the meeting.</p>` : "";
+
+    const rows = items.map((r) => {
+      const sum = r.matter_id && summary.get(r.matter_id);
+      const text = sum ? firstSentence(sum) : firstSentence(plainTitle(r.title || r.matter_name), 220);
+      const oc = r.outcome && r.outcome_cat !== "scheduled" ? `<span class="outcome" tabindex="0" data-tip="${outcomeTipFor(r)}">${OUTCOME_ICON[r.outcome_cat] || ""}${esc(r.outcome)}</span>` : "";
+      const mt = moments.has(r.item_id) ? `<a class="moment" href="${esc(videoAt(video.item, moments.get(r.item_id)))}" target="_blank" rel="noopener" data-tip="video_moment"
+          aria-label="Watch this item from ${fmtClock(moments.get(r.item_id))}"><svg width="9" height="9" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z" fill="currentColor"/></svg>${fmtClock(moments.get(r.item_id))}</a>` : "";
+      return `<li class="mt-item" data-text="${esc(((r.title || "") + " " + (sum || "") + " " + (r.matter_file || "")).toLowerCase())}">
+          <span class="mt-num">${esc((r.agenda_number || "").replace(/\.$/, "")) || "·"}</span>
+          <div class="mt-body">
+            <div class="mt-top"><span class="kind">${esc(KIND_LABEL[r.kind] || "Item")}</span>${r.matter_file ? `<a class="file mono" href="?file=${encodeURIComponent(r.matter_file)}">${esc(r.matter_file)}</a>` : ""}${oc}${mt}</div>
+            <p class="mt-text">${sum ? `<span class="ai-icon" aria-hidden="true">✦</span>` : ""}${esc(text)}</p>
+            ${r.dissent ? `<p class="mt-dissent">${esc(r.dissent.split("; ").map((x) => x.split("|")).filter((x) => x[1] === "no").map((x) => x[0]).join(", ") ? "Voted no: " + r.dissent.split("; ").map((x) => x.split("|")).filter((x) => x[1] === "no").map((x) => x[0]).join(", ") : "Split vote")}</p>` : ""}
+          </div></li>`;
+    }).join("");
+
+    const transcript = video ? `<section class="card mt-said" aria-labelledby="mt-said-h">
+        <h3 id="mt-said-h">What was said</h3>
+        <p class="muted small">Search this meeting's transcript, from its closed captions. Names of members of the public are removed.</p>
+        <form class="mt-said-form" data-item="${esc(video.item)}" data-k="${esc(String(video.slot))}">
+          <input type="search" placeholder="A word or phrase said at this meeting" aria-label="Search this meeting's transcript">
+          <button type="submit">Search</button>
+        </form>
+        <ol class="said-list mt-said-results"></ol>
+        <button type="button" class="linkish" data-whole="${esc(video.item)}">Read the whole transcript</button>
+        <div class="mt-whole" hidden></div>
+      </section>` : (!upcoming ? `<p class="mt-note">No transcript for this meeting yet. CitiCable usually posts the video a few days after a meeting.</p>` : "");
+
+    $("meeting-page").innerHTML = `
+      <p class="mt-back"><a href="#coming-up" data-back>← Back</a></p>
+      <div class="mt-head">
+        <div><p class="mt-kicker">${m.is_council ? "City Council meeting" : "Committee meeting"} ${status}</p>
+          <h2>${esc(m.body)}</h2>
+          <p class="mt-when">${esc(when)}${m.time ? " · " + esc(m.time) : ""}${m.location ? " · " + esc(m.location) : ""}</p></div>
+      </div>
+      <div class="mt-buttons">${buttons.join("")}</div>
+      ${glance}${pending}
+      <section class="card mt-agenda" aria-labelledby="mt-agenda-h">
+        <div class="mt-agenda-head"><h3 id="mt-agenda-h">${upcoming ? "On the agenda" : "The agenda and what happened"}</h3>
+          ${items.length > 8 ? `<input type="search" class="mt-filter" placeholder="Filter these ${items.length} items" aria-label="Filter the agenda items">` : ""}</div>
+        ${items.length ? `<ol class="mt-items">${rows}</ol>` : `<p class="muted">The agenda hasn't been posted yet.</p>`}
+        <p class="muted small mt-legend">${summary.size ? "✦ = AI summary (check the legislation for the official wording). " : ""}Click a file number for its full history.</p>
+      </section>
+      ${transcript}`;
+    document.title = `${m.body}, ${fmtDate(m.date)} — Juncta Lucent`;
+    $("menu-label").textContent = "Meeting";
+  }
+
+  // This meeting's transcript: search within it, or read all of it.
+  async function meetingSaidSearch(form) {
+    const q = form.querySelector("input").value, fts = ftsQuery(q), out = form.nextElementSibling;
+    if (!fts) { out.innerHTML = ""; return; }
+    out.innerHTML = `<li class="muted">Searching…</li>`;
+    const item = form.dataset.item;
+    const rows = await saidQuery(`SELECT p.id, p.t, p.speaker, p.pc, snippet(passages_fts, 0, char(1), char(2), ' … ', 30) AS snip
+        FROM passages_fts JOIN passages p ON p.id = passages_fts.rowid WHERE passages_fts MATCH ? AND p.item = ? ORDER BY p.id LIMIT 60`, [fts, item]);
+    const first = rows.slice(0, 8), rest = rows.length - first.length;
+    out.innerHTML = rows.length ? first.map((x) => renderMoment(x, item)).join("")
+      + (rest > 0 ? `<li class="mt-said-more"><button type="button" class="linkish">Show ${rest}${rows.length === 60 ? "+" : ""} more moment${rest === 1 ? "" : "s"}</button></li>` : "")
+      : `<li class="muted">Not said at this meeting (or misheard by the captions). Try another word.</li>`;
+    const more = out.querySelector(".mt-said-more button");
+    if (more) more.addEventListener("click", () => { more.parentElement.outerHTML = rows.slice(8).map((x) => renderMoment(x, item)).join(""); });
+  }
+  async function meetingWhole(btn) {
+    const box = btn.nextElementSibling;
+    if (!box.hidden) { box.hidden = true; btn.textContent = "Read the whole transcript"; return; }
+    if (!box.dataset.loaded) {
+      btn.textContent = "Loading…";
+      const rows = await saidQuery("SELECT id, item, t, speaker, pc, text FROM passages WHERE item = ? ORDER BY id", [btn.dataset.whole]);
+      box.innerHTML = rows.map((r) => `<div class="said-ctx"><a class="said-time small" href="${esc(videoAt(r.item, r.t))}" target="_blank" rel="noopener">${fmtClock(r.t)}</a>
+          ${speakerTag(r)}<p>${esc(r.text)}</p></div>`).join("");
+      box.dataset.loaded = "1";
+    }
+    box.hidden = false; btn.textContent = "Hide the transcript";
+  }
+  // "Add to my calendar": a one-event calendar file, made in the browser.
+  async function meetingIcs(id) {
+    const [m] = await (await db()).query("SELECT * FROM meetings WHERE event_id = ?", [Number(id)]);
+    if (!m) return;
+    const tm = /(\d{1,2}):(\d{2})\s*([AP]M)/i.exec(m.time || "");
+    let h = tm ? Number(tm[1]) % 12 + (/p/i.test(tm[3]) ? 12 : 0) : 13, mi = tm ? Number(tm[2]) : 0;
+    const pad = (n) => String(n).padStart(2, "0"), day = m.date.replace(/-/g, "");
+    const start = `${day}T${pad(h)}${pad(mi)}00`, end = `${day}T${pad(Math.min(23, h + 2))}${pad(mi)}00`;
+    const url = new URL(location.pathname, location.origin).href + "#meeting/" + m.event_id;
+    const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Juncta Lucent//EN", "BEGIN:VEVENT", `UID:meeting-${m.event_id}@junctalucent`,
+      `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").slice(0, 15)}Z`, `DTSTART;TZID=America/New_York:${start}`, `DTEND;TZID=America/New_York:${end}`,
+      `SUMMARY:${m.body}`, `LOCATION:${(m.location || "City Hall, 801 Plum St, Cincinnati").replace(/,/g, "\\,")}`,
+      `DESCRIPTION:Agenda and details: ${url}`, "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([ics], { type: "text/calendar" }));
+    a.download = `${m.body.replace(/[^\w]+/g, "-")}-${m.date}.ics`;
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+
+  document.addEventListener("submit", (e) => {
+    const f = e.target.closest(".mt-said-form");
+    if (f) { e.preventDefault(); meetingSaidSearch(f).catch((err) => { console.error(err); f.nextElementSibling.innerHTML = `<li class="muted">That search couldn't run.</li>`; }); }
+  });
+  document.addEventListener("input", (e) => {
+    if (!e.target.matches(".mt-filter")) return;
+    const q = e.target.value.trim().toLowerCase();
+    document.querySelectorAll("#meeting-page .mt-item").forEach((li) => { li.hidden = !!q && !li.dataset.text.includes(q); });
+  });
+
   // One HTML file, several pages: the address bar's #part says which one is showing
   // (#coming-up, #neighborhoods, …). The Search page shows the four question cards
   // until someone searches or browses, then the filters and results.
   const VIEWS = { "search": "Search", "coming-up": "What's coming up", "neighborhoods": "Neighborhoods",
-                  "council": "Council members", "how-it-works": "How City Hall works", "whats-new": "What's new" };
+                  "council": "Council members", "how-it-works": "How City Hall works", "whats-new": "What's new", "meeting": "Meeting" };
   const ALIASES = { "": "search", upcoming: "coming-up", trends: "coming-up", members: "council", analysis: "how-it-works" };
   let view = "search", browsing = false, filtersOpen = false;
 
+  let meetingId = null;
   function viewFromHash() {
     const h = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
-    return VIEWS[h] ? h : (h in ALIASES ? ALIASES[h] : null);
+    const mm = /^meeting\/(\d+)$/.exec(h);
+    if (mm) { meetingId = mm[1]; return "meeting"; }
+    return VIEWS[h] && h !== "meeting" ? h : (h in ALIASES ? ALIASES[h] : null);
   }
   function showView(v, scroll = true) {
     view = v;
@@ -1340,9 +1517,16 @@
     document.title = v === "search" ? "Juncta Lucent — search Cincinnati City Council records" : `${VIEWS[v]} — Juncta Lucent`;
     if (v === "how-it-works" && !analysisLoading) analysisLoading = loadAnalysis();
     if (v === "whats-new") loadWhatsNew();
+    if (v === "meeting" && meetingId) loadMeeting(meetingId).catch((e) => { console.error(e); $("meeting-page").innerHTML = `<div class="card notice">The meeting couldn't be loaded. Try reloading the page.</div>`; });
     if (scroll) window.scrollTo(0, 0);
   }
-  function route() { const v = viewFromHash(); if (v && v !== view) showView(v); else if (v) window.scrollTo(0, 0); }
+  let shownMeeting = null;
+  function route() {
+    const v = viewFromHash();
+    if (v === "meeting" && meetingId !== shownMeeting) { shownMeeting = meetingId; showView(v); return; }
+    if (v !== "meeting") shownMeeting = null;
+    if (v && v !== view) showView(v); else if (v) window.scrollTo(0, 0);
+  }
 
   // Search page: question cards when idle, results once there is a search, filter or "browse".
   function updateHome() {
@@ -1439,7 +1623,13 @@
       if (ft) { toggleFullText(ft); return; }
       const cp = e.target.closest("[data-copy]");
       if (cp) { copyText(cp.dataset.copy, cp); return; }
+      if (e.target.closest("[data-back]") && history.length > 1) { e.preventDefault(); history.back(); return; }
+      const ics = e.target.closest("[data-ics]");
+      if (ics) { meetingIcs(ics.dataset.ics).catch((err) => console.error(err)); return; }
+      const wh = e.target.closest("[data-whole]");
+      if (wh) { meetingWhole(wh).catch((err) => { console.error(err); wh.textContent = "Couldn't load"; }); return; }
       const mt = e.target.closest("[data-meeting]");
+      if (mt && !mt.hasAttribute("data-agenda-search")) { location.hash = "#meeting/" + mt.dataset.meeting; return; }
       if (mt) {
         [...FILTERS, ...FOCUS].forEach((k) => { state[k] = ""; });
         state.meeting = mt.dataset.meeting; $("q").value = ""; state.q = ""; state.said = "";
