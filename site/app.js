@@ -1323,10 +1323,11 @@
   function plainTitle(t) {
     t = stripBalance(t || "").trim();
     const m = /^(?:[A-Z][A-Z ]+(?:\([^)]*\)\s*)*),?\s*submitted by\s+.*?,\s*(?:(?:from|by)\s+[^,]+,\s*[^,]+,\s*)?(?:on\s+\d{1,2}\/\d{1,2}\/\d{2,4},?\s*)?(?=[A-Z]{3,}|WE MOVE|I (?:hereby )?(?:re)?appoint)/.exec(t);
-    t = m ? t.slice(m[0].length) : t;
+    // Otherwise at least drop a leading type word the badge already shows ("COMMUNICATION, submitted by…").
+    t = m ? t.slice(m[0].length) : t.replace(/^(?:ORDINANCE|RESOLUTION|MOTION|COMMUNICATION|REPORT|PETITION|PRESENTATION|APPOINTMENT|REAPPOINTMENT|STATEMENT)(?:\s*\([^)]*\))*,?\s+(?=[a-z])/i, "");
     // The City writes the action words in capitals (AUTHORIZING, ESTABLISHING); calmer in normal case.
-    t = t.replace(/\b[A-Z]{4,}(?:ING|ED|S)?\b/g, (w) => /(?:ING|ED)$/.test(w) || /^(?:WE|MOVE|THAT|AND|THE|FOR|WITH|FROM)$/.test(w) ? w.toLowerCase() : w)
-      .replace(/\bWE MOVE\b/g, "we move");
+    t = t.replace(/\bWE MOVE\b/g, "we move")
+      .replace(/\b[A-Z]{4,}(?:ING|ED|S)?\b/g, (w) => /(?:ING|ED)$/.test(w) || /^(?:THAT|WITH|FROM)$/.test(w) ? w.toLowerCase() : w);
     return t.replace(/^[a-z]/, (c) => c.toUpperCase());
   }
   const firstSentence = (s, max = 260) => { const m = /^(.{40,}?[.!?])\s/.exec(s || ""); let x = m ? m[1] : (s || ""); return x.length > max ? x.slice(0, max).replace(/\s+\S*$/, "") + "…" : x; };
@@ -1367,6 +1368,7 @@
     const status = isToday ? `<span class="mt-status today">Today</span>` : upcoming ? `<span class="mt-status up">Upcoming</span>`
       : `<span class="mt-status held">${m.minutes_url ? "Held · minutes posted" : "Held"}</span>`;
     const decided = items.filter((r) => r.outcome_cat === "passed" || r.outcome_cat === "failed");
+    const realItems = items.filter((r) => !(r.kind === "other" && !r.matter_file)).length;
     const split = items.filter((r) => r.dissent).length;
     const buttons = [];
     if (m.agenda_url) buttons.push(`<a class="mt-btn" href="${esc(m.agenda_url)}" target="_blank" rel="noopener">Agenda PDF</a>`);
@@ -1378,26 +1380,36 @@
 
 
     const glance = !upcoming ? `<div class="mt-glance">
-        <div><b>${items.length}</b><span>agenda item${items.length === 1 ? "" : "s"}</span></div>
+        <div><b>${realItems}</b><span>agenda item${realItems === 1 ? "" : "s"}</span></div>
         <div><b>${decided.filter((r) => r.outcome_cat === "passed").length}</b><span>passed or adopted</span></div>
         <div><b>${split}</b><span>split vote${split === 1 ? "" : "s"}</span></div>
-        <div><b>${video ? moments.size : "–"}</b><span>${video ? "items with a video link" : "no transcript yet"}</span></div>
+        ${video && moments.size ? `<div><b>${moments.size}</b><span>items with a video link</span></div>`
+          : video ? `<div><b>${Math.round((video.duration || 0) / 60)} min</b><span>of video, with transcript</span></div>`
+          : `<div><b>–</b><span>no video or transcript yet</span></div>`}
       </div>` : "";
     const pending = !upcoming && !m.minutes_url && !decided.length
       ? `<p class="mt-note">Outcomes appear here once the Clerk of Council posts the minutes, usually a week or two after the meeting.</p>` : "";
 
     const rows = items.map((r) => {
+      // Notes the Clerk records in the minutes ("Council convened at 2:00 P.M.") aren't agenda
+      // items: shown as plain lines, without a number, badge or outcome.
+      if (r.kind === "other" && !r.matter_file) {
+        return `<li class="mt-item mt-minute-note" data-text="${esc((r.title || r.matter_name || "").toLowerCase())}"><span class="mt-num"></span>
+          <p class="mt-text">${esc(stripBalance(r.title || r.matter_name || ""))}</p></li>`;
+      }
       const sum = r.matter_id && summary.get(r.matter_id);
       const text = sum ? firstSentence(sum) : firstSentence(plainTitle(r.title || r.matter_name), 220);
-      const oc = r.outcome && r.outcome_cat !== "scheduled" ? `<span class="outcome" tabindex="0" data-tip="${outcomeTipFor(r)}">${OUTCOME_ICON[r.outcome_cat] || ""}${esc(r.outcome)}</span>` : "";
+      const oc = r.outcome && r.outcome_cat !== "scheduled" && !(r.outcome === "On agenda" && !upcoming)
+        ? `<span class="outcome" tabindex="0" data-tip="${outcomeTipFor(r)}">${OUTCOME_ICON[r.outcome_cat] || ""}${esc(r.outcome)}</span>` : "";
       const mt = moments.has(r.item_id) ? `<a class="moment" href="${esc(videoAt(video.item, moments.get(r.item_id)))}" target="_blank" rel="noopener" data-tip="video_moment"
           aria-label="Watch this item from ${fmtClock(moments.get(r.item_id))}"><svg width="9" height="9" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z" fill="currentColor"/></svg>${fmtClock(moments.get(r.item_id))}</a>` : "";
+      const no = (r.dissent || "").split("; ").map((x) => x.split("|")).filter((x) => x[1] === "no").map((x) => x[0]).join(", ");
       return `<li class="mt-item" data-text="${esc(((r.title || "") + " " + (sum || "") + " " + (r.matter_file || "")).toLowerCase())}">
-          <span class="mt-num">${esc((r.agenda_number || "").replace(/\.$/, "")) || "·"}</span>
+          <span class="mt-num">${esc((r.agenda_number || "").replace(/\.$/, ""))}</span>
           <div class="mt-body">
-            <div class="mt-top"><span class="kind">${esc(KIND_LABEL[r.kind] || "Item")}</span>${r.matter_file ? `<a class="file mono" href="?file=${encodeURIComponent(r.matter_file)}">${esc(r.matter_file)}</a>` : ""}${oc}${mt}</div>
-            <p class="mt-text">${sum ? `<span class="ai-icon" aria-hidden="true">✦</span>` : ""}${esc(text)}</p>
-            ${r.dissent ? `<p class="mt-dissent">${esc(r.dissent.split("; ").map((x) => x.split("|")).filter((x) => x[1] === "no").map((x) => x[0]).join(", ") ? "Voted no: " + r.dissent.split("; ").map((x) => x.split("|")).filter((x) => x[1] === "no").map((x) => x[0]).join(", ") : "Split vote")}</p>` : ""}
+            <div class="mt-top"><span class="kind" tabindex="0" data-tip="${GLOSSARY[r.kind] ? r.kind : "other"}">${esc(KIND_LABEL[r.kind] || "Item")}</span>${r.matter_file ? `<a class="file mono" href="?file=${encodeURIComponent(r.matter_file)}" data-tip="file_number">${esc(r.matter_file)}</a>` : ""}${oc}${mt}</div>
+            <p class="mt-text">${sum ? `<span class="ai-tag mt-ai" tabindex="0" data-tip="ai_summary" aria-label="AI summary"><svg class="ai-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 2.5l1.9 5.6 5.6 1.9-5.6 1.9L10 17.5l-1.9-5.6L2.5 10l5.6-1.9z"/><path d="M18.5 13.5l.95 2.55 2.55.95-2.55.95-.95 2.55-.95-2.55-2.55-.95 2.55-.95z"/></svg></span>` : ""}${esc(text)}</p>
+            ${r.dissent ? `<p class="mt-dissent">${no ? "Voted no: " + esc(no) : "Split vote (abstentions)"}</p>` : ""}
           </div></li>`;
     }).join("");
 
@@ -1426,7 +1438,7 @@
         <div class="mt-agenda-head"><h3 id="mt-agenda-h">${upcoming ? "On the agenda" : "The agenda and what happened"}</h3>
           ${items.length > 8 ? `<input type="search" class="mt-filter" placeholder="Filter these ${items.length} items" aria-label="Filter the agenda items">` : ""}</div>
         ${items.length ? `<ol class="mt-items">${rows}</ol>` : `<p class="muted">The agenda hasn't been posted yet.</p>`}
-        <p class="muted small mt-legend">${summary.size ? "✦ = AI summary (check the legislation for the official wording). " : ""}Click a file number for its full history.</p>
+        <p class="muted small mt-legend">${summary.size ? `<span class="ai-tag mt-ai" aria-hidden="true"><svg class="ai-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 2.5l1.9 5.6 5.6 1.9-5.6 1.9L10 17.5l-1.9-5.6L2.5 10l5.6-1.9z"/><path d="M18.5 13.5l.95 2.55 2.55.95-2.55.95-.95 2.55-.95-2.55-2.55-.95 2.55-.95z"/></svg></span> = AI summary (check the legislation for the official wording). ` : ""}Click a file number for its full history.</p>
       </section>
       ${transcript}`;
     document.title = `${m.body}, ${fmtDate(m.date)} — Juncta Lucent`;
