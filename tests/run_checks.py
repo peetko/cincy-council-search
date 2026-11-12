@@ -8,7 +8,9 @@ What's checked (all with made-up data, no network):
   2. outcome labels: only final-passage actions are "Passed";
   3. the AI-summary number check: a wrong amount is caught;
   4. sponsor names: parsing, and one member's count never includes another's;
-  5. "unanimous" means nobody voted no or abstained.
+  5. "unanimous" means nobody voted no or abstained;
+  6. video moments: an item is placed where it's introduced, not where it's wrapped up, and an
+     item that's never clearly mentioned gets no link.
 """
 import json
 import os
@@ -21,6 +23,7 @@ SCRIPTS = os.path.join(HERE, "..", "scripts")
 sys.path.insert(0, SCRIPTS)
 
 import collect      # noqa: E402
+import item_moments  # noqa: E402
 import common       # noqa: E402
 import summarize    # noqa: E402
 import transcripts  # noqa: E402
@@ -132,6 +135,23 @@ if run.returncode == 0:
     check(got.get("Betsy Sundermann") == 6, "statistics / Sundermann's sponsored count", str(got))
     unan = next(k for k in stats["kpis"] if k["label"] == "Unanimous final votes")
     check(unan["value"] == "67%", "statistics / unanimous = nobody voted no or abstained (4 of 6 votes)", unan["value"])
+
+# ---- 6. video moments
+_p = [(1, 0, "Good afternoon. We'll start with item number 1, a presentation on the Westwood business district."),
+      (2, 30, "Thank you for that. Questions from colleagues on the Westwood plan? Seeing none."),
+      (3, 60, "We will file item number 1. Next up is item number 2, the ordinance on the Hartwell Avenue sidewalk repairs."),
+      (4, 90, "The Hartwell Avenue sidewalk project covers four blocks near the recreation center."),
+      (5, 120, "Without objection we'll put item number 2 on for passage. Now the Ludlow Viaduct repainting contract with Acme Bridgeworks."),
+      (6, 150, "Acme Bridgeworks will repaint the Ludlow Viaduct railings this spring.")]
+_items = [dict(item_id=11, agenda_number="1", title="PRESENTATION regarding the Westwood business district"),
+          dict(item_id=12, agenda_number="2", title="ORDINANCE authorizing sidewalk repairs on Hartwell Avenue"),
+          dict(item_id=13, agenda_number="", title="ORDINANCE authorizing a contract with Acme Bridgeworks to repaint the Ludlow Viaduct railings"),
+          dict(item_id=14, agenda_number="", title="RESOLUTION recognizing the Bond Hill Library centennial")]
+_m = item_moments.find(_p, _items, {w.lower() for w in transcripts.FUNCTION})
+check(_m.get(11, (0,))[0] == 1, "video moments / item 1 placed where it's introduced", str(_m))
+check(_m.get(12, (0,))[0] == 3, "video moments / item 2 placed at 'next up is item number 2', not at 'on for passage'", str(_m))
+check(_m.get(13, (0,))[0] == 5, "video moments / an unnumbered item placed by its title words", str(_m))
+check(14 not in _m, "video moments / an item never mentioned gets no link", str(_m))
 
 if failures:
     print(f"{len(failures)} check(s) FAILED ({passed} passed). Nothing is published until these pass:")

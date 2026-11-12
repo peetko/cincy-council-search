@@ -565,6 +565,7 @@
       snips.forEach((x) => { if (!snipByKey.has(x.k) || /\u0001/.test(x.snip)) snipByKey.set(x.k, x.snip); });
       $("result-list").insertAdjacentHTML("beforeend", keys.map((k) => renderGroup(byKey.get(k), snipByKey.get(k))).join(""));
       enhanceWithDocs(mids, fts, snipByKey).catch((e) => console.error(e));
+      enhanceWithMoments().catch((e) => console.error(e));
     } catch (e) {
       throw e;  // handled (and retried if the data was just updated) in runSearch
     }
@@ -765,6 +766,24 @@
     });
   }
 
+  // "▶ 1:02:14": where each agenda appearance comes up in that meeting's video (found nightly
+  // from the transcripts; see scripts/item_moments.py). Only shown where a match was confident.
+  async function enhanceWithMoments() {
+    const rows = [...document.querySelectorAll("#result-list [data-iid]:not([data-mom])")];
+    if (!rows.length || !(await saidDb())) return;
+    rows.forEach((el) => { el.dataset.mom = "1"; });
+    const ids = [...new Set(rows.map((el) => Number(el.dataset.iid)))];
+    const found = await saidQuery(`SELECT m.item_id, m.item, m.t FROM moments m WHERE m.item_id IN (${ids.join(",")})`, [])
+      .catch(() => []);   // older transcript data has no moments table
+    const at = new Map(found.map((r) => [Number(r.item_id), r]));
+    rows.forEach((el) => {
+      const m = at.get(Number(el.dataset.iid));
+      if (!m) return;
+      el.insertAdjacentHTML("beforeend", ` <a class="moment" href="${esc(videoAt(m.item, m.t))}" target="_blank" rel="noopener"
+        aria-label="Watch this item in the meeting video, from ${fmtClock(m.t)}" data-tip="video_moment"><svg width="10" height="10" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z" fill="currentColor"/></svg>video ${fmtClock(m.t)}</a>`);
+    });
+  }
+
   const outcomeTipFor = (r) => /^Passed as emergency|^Emergency clause/.test(r.outcome || "") ? "passed_emergency"
     : /^Three readings/.test(r.outcome || "") ? "three_readings"
     : (GLOSSARY[r.outcome_cat] ? r.outcome_cat : "outcome");
@@ -814,12 +833,12 @@
       const shown = steps.length > 5 ? steps.slice(-5) : steps;
       timeline = `<details class="timeline"${steps.length <= 4 ? " open" : ""}><summary>History: ${steps.length} steps, ${esc(fmtDate(steps[0].date))} – ${esc(fmtDate(latest.date))}</summary><ol>`
         + (steps.length > shown.length ? `<li class="more-steps">${steps.length - shown.length} earlier step${steps.length - shown.length === 1 ? "" : "s"} not shown</li>` : "")
-        + shown.map((r) => `<li><span class="when">${esc(fmtDate(r.date))}</span><span class="where">${esc(r.body)}</span>
+        + shown.map((r) => `<li data-iid="${r.item_id}"><span class="when">${esc(fmtDate(r.date))}</span><span class="where">${esc(r.body)}</span>
             <span class="what" tabindex="0" data-tip="${outcomeTipFor(r)}">${esc(r.outcome || "")}</span>
             ${r.minutes_url ? `<a href="${esc(r.minutes_url)}" target="_blank" rel="noopener">minutes</a>` : (r.agenda_url ? `<a href="${esc(r.agenda_url)}" target="_blank" rel="noopener">agenda</a>` : "")}</li>`).join("")
         + `</ol></details>`;
     } else {
-      meta.unshift(`<span><strong>${esc(fmtDate(main.date))}</strong> · ${esc(main.body)}</span>`);
+      meta.unshift(`<span data-iid="${main.item_id}"><strong>${esc(fmtDate(main.date))}</strong> · ${esc(main.body)}</span>`);
     }
     return `<article class="card result" data-mid="${main.matter_id || ""}">
       <div class="tags">

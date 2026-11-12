@@ -221,7 +221,7 @@ button.tip:hover, button.tip[aria-expanded="true"] { color: var(--red); }
 details.timeline { border-left: 3px solid var(--badge); padding-left: 12px; }
 details.timeline summary { cursor: pointer; font-size: 14px; font-weight: 600; color: var(--ink-2); min-height: 28px; display: flex; align-items: center; }
 details.timeline ol { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-details.timeline li { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto auto; gap: 4px 12px; align-items: baseline; font-size: 14px; }
+details.timeline li { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto auto auto; gap: 4px 12px; align-items: baseline; font-size: 14px; }
 details.timeline li .when { font-weight: 600; font-variant-numeric: tabular-nums; }
 details.timeline li .where { color: var(--ink-2); min-width: 0; }
 details.timeline li .what { font-weight: 600; cursor: help; }
@@ -591,3 +591,10 @@ body.said-mode #docs-toggle-wrap, body.said-mode #docs-offer, body.said-mode #cs
   body.has-results .res-tabs { margin-bottom: 8px; }
 }
 .tries .try-said svg { vertical-align: -2px; margin-right: 2px; }
+/* "▶ video 1:02:14" next to an agenda appearance */
+.moment { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--badge);
+  color: var(--navy); font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; text-decoration: none; white-space: nowrap; }
+.moment:hover { background: var(--navy); color: #fff; }
+.moment svg { width: 9px; height: 9px; flex: none; display: block; }
+details.timeline li .moment { grid-column: 5; margin-left: 0; }
+@media (max-width: 640px) { details.timeline li .moment { grid-column: 1 / -1; order: 4; justify-self: start; } }

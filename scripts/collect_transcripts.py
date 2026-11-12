@@ -30,6 +30,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+import item_moments
 import transcripts
 from common import DEFAULT_DB, ROOT, SETTINGS
 
@@ -60,6 +61,12 @@ CREATE TABLE IF NOT EXISTS tmeetings (
   duration   INTEGER
 );
 CREATE INDEX IF NOT EXISTS tmeetings_date ON tmeetings(date);
+CREATE TABLE IF NOT EXISTS moments (
+  item_id INTEGER PRIMARY KEY,   -- a Legistar agenda item (items.item_id in council.db)
+  item    TEXT,                  -- the archive.org video
+  t       INTEGER,               -- seconds into the video where the item comes up
+  how     TEXT                   -- number ("next up is item 3") or title (its distinctive words)
+);
 CREATE TABLE IF NOT EXISTS passages (
   id      INTEGER PRIMARY KEY,   -- see passage_id: newer meetings have bigger ids
   item    TEXT,
@@ -201,6 +208,30 @@ def store(con, row, ps, info, today):
                                      info["duration"], row["item"]))
 
 
+def place_items(con, main_db):
+    """Where in each meeting's video every agenda item comes up (see item_moments.py)."""
+    stop = {w.lower() for w in transcripts.FUNCTION}
+    con.execute("DELETE FROM moments")
+    meetings = con.execute("SELECT item, event_id FROM tmeetings WHERE status = 'ok' AND event_id IS NOT NULL").fetchall()
+    placed = total = 0
+    hows = {}
+    for m in meetings:
+        items = [dict(r) for r in main_db.execute(
+            "SELECT item_id, agenda_number, COALESCE(NULLIF(title, ''), matter_name) AS title FROM items WHERE event_id = ?", (m["event_id"],))]
+        if not items:
+            continue
+        passages = [(r["id"], r["t"], r["text"]) for r in con.execute("SELECT id, t, text FROM passages WHERE item = ? ORDER BY id", (m["item"],))]
+        found = item_moments.find(passages, items, stop)
+        con.executemany("INSERT OR REPLACE INTO moments VALUES (?,?,?,?)", [(iid, m["item"], t, how) for iid, (_, t, how) in found.items()])
+        total += len(items)
+        placed += len(found)
+        for _, _, how in found.values():
+            hows[how] = hows.get(how, 0) + 1
+    con.commit()
+    print(f"Video moments: placed {placed:,} of {total:,} agenda items at meetings with transcripts "
+          f"({', '.join(f'{v:,} by {k}' for k, v in sorted(hows.items()))}).")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default=DEFAULT_DB)
@@ -339,6 +370,7 @@ def main():
         json.dump({"meetings": s["ok"] or 0, "videos": s["n"], "first": s["first"], "last": s["last"],
                    "words": s["w"] or 0, "updated": today, "left": left}, f)
 
+    place_items(con, main_db)
     con.executescript("DROP TABLE IF EXISTS passages_fts;" + FTS)
     con.execute("INSERT INTO passages_fts(passages_fts) VALUES('rebuild')")
     con.execute("INSERT INTO passages_fts(passages_fts) VALUES('optimize')")
